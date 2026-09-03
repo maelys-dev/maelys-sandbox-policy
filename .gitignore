@@ -1,0 +1,9 @@
+build/
+dist/
+*.o
+*.a
+*.dSYM/
+*.profraw
+*.profdata
+node_modules/
+reference/typescript/dist/

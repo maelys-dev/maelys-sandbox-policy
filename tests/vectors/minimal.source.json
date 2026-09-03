@@ -1,0 +1,16 @@
+{
+  "formatVersion": 3,
+  "filesystem": {
+    "default": "deny",
+    "rules": []
+  },
+  "network": {
+    "mode": "none"
+  },
+  "root": {
+    "mode": "read-only"
+  },
+  "process": {
+    "treeConfinement": "required"
+  }
+}

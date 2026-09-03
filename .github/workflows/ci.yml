@@ -1,0 +1,97 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-policy-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            cc: gcc
+          - os: ubuntu-24.04
+            cc: clang
+          - os: ubuntu-24.04-arm
+            cc: clang
+          - os: macos-15
+            cc: clang
+          - os: macos-26
+            cc: clang
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - if: runner.os == 'macOS'
+        run: test "$(uname -m)" = arm64
+      - run: make check CC=${{ matrix.cc }}
+
+  sanitizers:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - run: sudo apt-get update && sudo apt-get install --yes clang libclang-rt-18-dev
+      - run: make asan CC=clang
+      - run: make ubsan CC=clang
+      - run: make tsan CC=clang
+
+  fuzz-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - run: sudo apt-get update && sudo apt-get install --yes clang
+      - run: make fuzz CC=clang
+      - run: build/fuzz/fuzz_decode -max_total_time=10
+      - run: build/fuzz/fuzz_json -max_total_time=10
+
+  portable-conformance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - run: sudo apt-get update && sudo apt-get install --yes emscripten nodejs npm
+      - run: make playground-dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playground-dist
+          path: dist/playground/
+          if-no-files-found: error
+
+  docker-gcc:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - run: scripts/test-docker.sh
+
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-x86_64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+          - os: macos-15
+            target: macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes build-essential dpkg-dev rpm
+      - run: bash scripts/package-release.sh ${{ matrix.target }}
+      - name: Verify package contents
+        shell: bash
+        run: |
+          tar tzf "dist/maelys-sandbox-policy-$(cat VERSION)-${{ matrix.target }}.tar.gz" >package-contents.txt
+          grep -q 'usr/local/bin/maelys-policy' package-contents.txt
+          grep -q 'usr/local/include/maelys/sandbox_policy.h' package-contents.txt

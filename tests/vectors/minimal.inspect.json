@@ -1,0 +1,22 @@
+{
+  "inspectionVersion": 1,
+  "mirFormatVersion": 3,
+  "identity": {
+    "algorithm": "sha256",
+    "basis": "canonical-mir-v3-bytes",
+    "decisionDigest": "7bdfac8d09671969cc771cd038b342ac59d09f5fdafc55d447d7e1d2d71888ae"
+  },
+  "filesystem": {
+    "default": "deny",
+    "rules": []
+  },
+  "network": {
+    "mode": "none"
+  },
+  "root": {
+    "mode": "read-only"
+  },
+  "process": {
+    "treeConfinement": "required"
+  }
+}

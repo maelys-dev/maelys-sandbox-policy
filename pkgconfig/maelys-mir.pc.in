@@ -1,0 +1,9 @@
+prefix=@PREFIX@
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: maelys-mir
+Description: Canonical Maelys policy IR
+Version: @VERSION@
+Libs: -L${libdir} -lmaelys-mir
+Cflags: -I${includedir}

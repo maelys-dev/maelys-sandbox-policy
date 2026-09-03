@@ -1,0 +1,4 @@
+FROM gcc:14
+WORKDIR /src
+COPY . .
+RUN make clean && make check CC=gcc

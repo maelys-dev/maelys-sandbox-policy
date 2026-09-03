@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schemas.maelys.dev/mir-source/v3/schema.json",
+  "formatVersion": 3,
+  "filesystem": {
+    "default": "deny",
+    "rules": [
+      {
+        "access": "write",
+        "path": { "root": "workspace", "relative": "build//./output" },
+        "scope": "tree",
+        "missing": "skip"
+      },
+      {
+        "access": "read",
+        "path": { "special": "minimal-runtime" }
+      },
+      {
+        "access": "deny",
+        "path": { "root": "workspace", "relative": ".git" },
+        "missing": "skip"
+      }
+    ]
+  },
+  "network": {
+    "mode": "none"
+  },
+  "root": {
+    "mode": "read-only"
+  },
+  "process": {
+    "treeConfinement": "required"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "@maelys/mir-v3-verifier",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Dependency-free reference verifier for canonical Maelys MIR v3 artifacts.",
+  "exports": "./dist/mir-v3.js",
+  "types": "./dist/mir-v3.d.ts",
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node test/vectors.mjs",
+    "check": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

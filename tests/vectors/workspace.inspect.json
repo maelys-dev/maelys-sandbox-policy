@@ -1,0 +1,44 @@
+{
+  "inspectionVersion": 1,
+  "mirFormatVersion": 3,
+  "identity": {
+    "algorithm": "sha256",
+    "basis": "canonical-mir-v3-bytes",
+    "decisionDigest": "7264c09c287103d64585a1fad2a214728f0e1cc90b5f8a329d0a9512c4a9f42d"
+  },
+  "filesystem": {
+    "default": "deny",
+    "rules": [
+      {
+        "access": "read",
+        "root": "minimal-runtime",
+        "path": "",
+        "scope": "tree",
+        "missing": "error"
+      },
+      {
+        "access": "deny",
+        "root": "workspace",
+        "path": ".git",
+        "scope": "tree",
+        "missing": "skip"
+      },
+      {
+        "access": "write",
+        "root": "workspace",
+        "path": "build/output",
+        "scope": "tree",
+        "missing": "skip"
+      }
+    ]
+  },
+  "network": {
+    "mode": "none"
+  },
+  "root": {
+    "mode": "read-only"
+  },
+  "process": {
+    "treeConfinement": "required"
+  }
+}

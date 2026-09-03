@@ -1,0 +1,26 @@
+{
+  "formatVersion": 3,
+  "filesystem": {
+    "default": "deny",
+    "rules": [
+      {
+        "access": "read",
+        "path": { "root": "workspace", "relative": "src" }
+      }
+    ]
+  },
+  "network": {
+    "mode": "mediated",
+    "allow": [
+      { "protocol": "tcp", "host": "GitHub.COM", "port": 443 },
+      { "protocol": "tcp", "host": "api.github.com", "port": 443 },
+      { "protocol": "tcp", "host": "github.com", "port": 443 }
+    ]
+  },
+  "root": {
+    "mode": "read-only"
+  },
+  "process": {
+    "treeConfinement": "disabled"
+  }
+}

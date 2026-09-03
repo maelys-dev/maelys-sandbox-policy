@@ -1,0 +1,10 @@
+prefix=@PREFIX@
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: maelys-sandbox-policy
+Description: Maelys MIR to SandboxPlan compiler
+Version: @VERSION@
+Requires: maelys-mir
+Libs: -L${libdir} -lmaelys-sandbox-policy
+Cflags: -I${includedir}
