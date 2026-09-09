@@ -39,7 +39,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - run: sudo apt-get update && sudo apt-get install --yes clang libclang-rt-18-dev
+      - run: |
+          # A broken third-party apt source of the runner image must not fail an
+          # install of Ubuntu archive packages: the update reports, the install decides.
+          sudo apt-get update || echo "::warning::apt-get update reported errors; the install decides"
+          sudo apt-get install --yes clang libclang-rt-18-dev
       - run: make asan CC=clang
       - run: make ubsan CC=clang
       - run: make tsan CC=clang
@@ -48,7 +52,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - run: sudo apt-get update && sudo apt-get install --yes clang
+      - run: |
+          # A broken third-party apt source of the runner image must not fail an
+          # install of Ubuntu archive packages: the update reports, the install decides.
+          sudo apt-get update || echo "::warning::apt-get update reported errors; the install decides"
+          sudo apt-get install --yes clang
       - run: make fuzz CC=clang
       - run: build/fuzz/fuzz_decode -max_total_time=10
       - run: build/fuzz/fuzz_json -max_total_time=10
@@ -57,7 +65,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - run: sudo apt-get update && sudo apt-get install --yes emscripten nodejs npm
+      - run: |
+          # A broken third-party apt source of the runner image must not fail an
+          # install of Ubuntu archive packages: the update reports, the install decides.
+          sudo apt-get update || echo "::warning::apt-get update reported errors; the install decides"
+          sudo apt-get install --yes emscripten nodejs npm
       - run: make playground-dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -87,7 +99,11 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install Linux packaging tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --yes build-essential dpkg-dev rpm
+        run: |
+          # A broken third-party apt source of the runner image must not fail an
+          # install of Ubuntu archive packages: the update reports, the install decides.
+          sudo apt-get update || echo "::warning::apt-get update reported errors; the install decides"
+          sudo apt-get install --yes build-essential dpkg-dev rpm
       - run: bash scripts/package-release.sh ${{ matrix.target }}
       - name: Verify package contents
         shell: bash

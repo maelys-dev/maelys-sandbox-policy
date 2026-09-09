@@ -39,7 +39,11 @@ jobs:
           test "$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_sha}" --jq .verification.verified)" = true
       - name: Install Linux packaging tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --yes build-essential dpkg-dev rpm
+        run: |
+          # A broken third-party apt source of the runner image must not fail an
+          # install of Ubuntu archive packages: the update reports, the install decides.
+          sudo apt-get update || echo "::warning::apt-get update reported errors; the install decides"
+          sudo apt-get install --yes build-essential dpkg-dev rpm
       - run: bash scripts/package-release.sh ${{ matrix.target }}
       - uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018 # v1
         with:
