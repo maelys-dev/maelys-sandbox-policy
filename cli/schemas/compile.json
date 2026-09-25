@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mode", "changed", "source", "output", "bytes", "digest", "precondition"],
+  "properties": {
+    "mode": {"enum": ["plan", "apply"]},
+    "changed": {"type": "boolean"},
+    "source": {"type": "string"},
+    "output": {"type": "string"},
+    "bytes": {"type": "integer", "minimum": 20},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetAbsent", "replace"],
+      "properties": {
+        "targetAbsent": {"type": "boolean"},
+        "replace": {"type": "boolean"}
+      }
+    }
+  }
+}

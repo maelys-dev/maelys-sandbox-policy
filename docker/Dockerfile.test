@@ -1,4 +1,9 @@
 FROM gcc:14
+# The pinned dependencies arrive as a second build context, the directory
+# scripts/checkout-dependencies.sh filled; the build reads them there.
+COPY --from=dependencies . /dependencies
+ENV MAELYS_DEPENDENCIES_DIR=/dependencies
+RUN git config --global --add safe.directory '*'
 WORKDIR /src
 COPY . .
 RUN make clean && make check CC=gcc

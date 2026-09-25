@@ -10,6 +10,19 @@
   `VERSION` into `sandbox_policy.h` during a cut, and `make check` refuses a
   header that disagrees with `VERSION`;
 - fix the Homebrew formula test, which still wrote a format v2 policy.
+- **breaking (CLI):** `maelys-policy` is rebuilt on maelys-cli 0.5.30 and
+  follows `agent-cli/v2`: `describe`, JSON envelopes, stable error codes,
+  exit 2 for a completed validation with violations, shell completion and a
+  generated reference in `docs/cli.md`. `compile` is a plan/apply transaction:
+  `compile SOURCE --output FILE --apply` replaces `compile SOURCE -o FILE`,
+  and an existing output is replaced only with `--replace`. `validate` exits 2
+  on non-canonical MIR, which it used to report as 1. `--version` prints
+  `maelys-policy X.Y.Z`; `version --field version` prints the bare version.
+  The libraries, MIR and SandboxPlan are unchanged;
+- pin maelys-cli and agent-cli-spec under `dependencies/`, read under
+  `$MAELYS_DEPENDENCIES_DIR`; `make check` runs the agent-cli conformance kit
+  against `maelys-policy`, and the Homebrew formula builds the pinned
+  framework.
 
 ## 0.4.1 — 2026-09-03
 
