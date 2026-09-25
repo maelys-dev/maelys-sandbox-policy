@@ -43,7 +43,17 @@ configuration object. Its filesystem rules must all be `deny`. Network modes
 are ordered from narrowest to broadest as `none < mediated < direct`; the
 effective mode is the narrower of base and restriction. When both inputs are
 mediated, the destination allowlists are intersected; an empty intersection
-becomes `none`. Process-tree confinement is combined with logical OR.
+becomes `none`. For a destination kept by the intersection, `REQUIRE_TLS_SNI`
+is combined with logical OR and `ALLOW_PRIVATE_ADDRESSES` with logical AND.
+Process-tree confinement is combined with logical OR.
+
+Destination flags are read through `maelys_mir_network_destination_at_ex()`
+and `maelys_sandbox_policy_plan_network_destination_at_ex()`. The original
+accessors have no field for them and return `MAELYS_MIR_ERR_UNSUPPORTED` for a
+destination carrying any flag, so a consumer written before 0.5.0 cannot drop
+one silently. A backend advertises `CAP_NETWORK_REQUIRE_TLS_SNI` and
+`CAP_NETWORK_PRIVATE_ADDRESSES` only if its mediator enforces them; a plan
+using either flag fails closed without the matching capability.
 
 `maelys_sandbox_policy_compile` verifies declared capabilities and resolves current
 paths, but it does not enforce them. Executor must consume the plan without

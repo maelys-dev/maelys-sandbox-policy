@@ -22,7 +22,9 @@ enum {
   MAELYS_SANDBOX_POLICY_CAP_NETWORK_DIRECT = UINT64_C(1) << 4,
   MAELYS_SANDBOX_POLICY_CAP_NETWORK_MEDIATED = UINT64_C(1) << 5,
   MAELYS_SANDBOX_POLICY_CAP_PROCESS_TREE = UINT64_C(1) << 6,
-  MAELYS_SANDBOX_POLICY_CAP_ROOT_EPHEMERAL_WRITE = UINT64_C(1) << 7
+  MAELYS_SANDBOX_POLICY_CAP_ROOT_EPHEMERAL_WRITE = UINT64_C(1) << 7,
+  MAELYS_SANDBOX_POLICY_CAP_NETWORK_REQUIRE_TLS_SNI = UINT64_C(1) << 8,
+  MAELYS_SANDBOX_POLICY_CAP_NETWORK_PRIVATE_ADDRESSES = UINT64_C(1) << 9
 };
 
 typedef struct maelys_sandbox_policy_resolved_rule_view {
@@ -74,6 +76,10 @@ maelys_mir_result_t maelys_sandbox_policy_plan_network_destination_at(
     const maelys_sandbox_policy_plan_t *plan,
     size_t index,
     maelys_mir_network_destination_view_t *out_destination);
+maelys_mir_result_t maelys_sandbox_policy_plan_network_destination_at_ex(
+    const maelys_sandbox_policy_plan_t *plan,
+    size_t index,
+    maelys_mir_network_destination_ex_view_t *out_destination);
 int maelys_sandbox_policy_plan_process_tree_required(
     const maelys_sandbox_policy_plan_t *plan);
 const char *maelys_sandbox_policy_plan_mir_digest(const maelys_sandbox_policy_plan_t *plan);

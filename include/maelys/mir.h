@@ -71,11 +71,26 @@ typedef enum maelys_mir_root_mode {
   MAELYS_MIR_ROOT_EPHEMERAL_WRITE = 2
 } maelys_mir_root_mode_t;
 
+/* Per-destination mediation flags. Both default to false; a destination
+ * without flags encodes exactly as it did in 0.4.x, so existing policy
+ * digests are unchanged. */
+typedef uint32_t maelys_mir_network_destination_flags_t;
+#define MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI UINT32_C(0x1)
+#define MAELYS_MIR_NETWORK_DESTINATION_ALLOW_PRIVATE_ADDRESSES UINT32_C(0x2)
+#define MAELYS_MIR_NETWORK_DESTINATION_FLAGS_ALL UINT32_C(0x3)
+
 typedef struct maelys_mir_network_destination_view {
   maelys_mir_network_protocol_t protocol;
   const char *host;
   uint16_t port;
 } maelys_mir_network_destination_view_t;
+
+typedef struct maelys_mir_network_destination_ex_view {
+  maelys_mir_network_protocol_t protocol;
+  const char *host;
+  uint16_t port;
+  maelys_mir_network_destination_flags_t flags;
+} maelys_mir_network_destination_ex_view_t;
 
 typedef struct maelys_mir_fs_rule_view {
   maelys_mir_fs_access_t access;
@@ -111,6 +126,16 @@ maelys_mir_result_t maelys_mir_builder_add_network_destination(
     const char *host,
     uint16_t port,
     char **out_error);
+/* Adding the same (protocol, host, port) twice merges flags restrictively:
+ * REQUIRE_TLS_SNI is kept if either entry sets it, ALLOW_PRIVATE_ADDRESSES
+ * only if both do. */
+maelys_mir_result_t maelys_mir_builder_add_network_destination_ex(
+    maelys_mir_builder_t *builder,
+    maelys_mir_network_protocol_t protocol,
+    const char *host,
+    uint16_t port,
+    maelys_mir_network_destination_flags_t flags,
+    char **out_error);
 maelys_mir_result_t
 maelys_mir_builder_set_process_tree_required(maelys_mir_builder_t *builder,
                                              int required, char **out_error);
@@ -129,6 +154,12 @@ maelys_mir_result_t maelys_mir_network_destination_at(
     const maelys_mir_t *mir,
     size_t index,
     maelys_mir_network_destination_view_t *out_destination);
+/* The non-_ex accessor cannot represent flags: it fails closed with
+ * MAELYS_MIR_ERR_UNSUPPORTED for a destination carrying any flag. */
+maelys_mir_result_t maelys_mir_network_destination_at_ex(
+    const maelys_mir_t *mir,
+    size_t index,
+    maelys_mir_network_destination_ex_view_t *out_destination);
 int maelys_mir_process_tree_required(const maelys_mir_t *mir);
 
 maelys_mir_result_t maelys_mir_encode(const maelys_mir_t *mir,

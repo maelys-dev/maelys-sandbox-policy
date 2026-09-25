@@ -1,0 +1,33 @@
+{
+  "formatVersion": 3,
+  "filesystem": {
+    "default": "deny",
+    "rules": [
+      {
+        "access": "read",
+        "path": { "root": "workspace", "relative": "src" }
+      }
+    ]
+  },
+  "network": {
+    "mode": "mediated",
+    "allow": [
+      { "protocol": "tcp", "host": "github.com", "port": 443, "requireTlsSni": true },
+      { "protocol": "tcp", "host": "api.github.com", "port": 443, "requireTlsSni": false },
+      {
+        "protocol": "tcp",
+        "host": "Registry.Internal",
+        "port": 5000,
+        "requireTlsSni": true,
+        "allowPrivateAddresses": true
+      },
+      { "protocol": "tcp", "host": "cache.internal", "port": 8080, "allowPrivateAddresses": true }
+    ]
+  },
+  "root": {
+    "mode": "read-only"
+  },
+  "process": {
+    "treeConfinement": "disabled"
+  }
+}

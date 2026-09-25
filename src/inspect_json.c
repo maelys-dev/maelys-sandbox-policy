@@ -177,8 +177,18 @@ maelys_mir_result_t maelys_mir_inspect_json(const maelys_mir_t *mir,
           !append(&output, "        \"protocol\": \"tcp\",\n") ||
           !append(&output, "        \"host\": ") ||
           !append_json_string(&output, destination->host) ||
-          !append(&output, ",\n        \"port\": ") || !append(&output, port) ||
-          !append(&output, "\n      }"))
+          !append(&output, ",\n        \"port\": ") || !append(&output, port))
+        goto memory;
+      /* Flags are projected only when set, like the source defaults, so a
+       * destination without flags renders exactly as it did in 0.4.x. */
+      if ((destination->flags & MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI) &&
+          !append(&output, ",\n        \"requireTlsSni\": true"))
+        goto memory;
+      if ((destination->flags &
+           MAELYS_MIR_NETWORK_DESTINATION_ALLOW_PRIVATE_ADDRESSES) &&
+          !append(&output, ",\n        \"allowPrivateAddresses\": true"))
+        goto memory;
+      if (!append(&output, "\n      }"))
         goto memory;
     }
     if (!append(&output, "\n    ]"))

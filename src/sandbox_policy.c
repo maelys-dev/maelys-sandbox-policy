@@ -176,6 +176,14 @@ maelys_sandbox_policy_required_capabilities(const maelys_mir_t *mir) {
     c |= MAELYS_SANDBOX_POLICY_CAP_PROCESS_TREE;
   if (mir->root_mode == MAELYS_MIR_ROOT_EPHEMERAL_WRITE)
     c |= MAELYS_SANDBOX_POLICY_CAP_ROOT_EPHEMERAL_WRITE;
+  for (size_t i = 0; i < mir->network_destination_count; ++i) {
+    maelys_mir_network_destination_flags_t flags =
+        mir->network_destinations[i].flags;
+    if (flags & MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI)
+      c |= MAELYS_SANDBOX_POLICY_CAP_NETWORK_REQUIRE_TLS_SNI;
+    if (flags & MAELYS_MIR_NETWORK_DESTINATION_ALLOW_PRIVATE_ADDRESSES)
+      c |= MAELYS_SANDBOX_POLICY_CAP_NETWORK_PRIVATE_ADDRESSES;
+  }
   return c;
 }
 
@@ -197,6 +205,10 @@ static const char *cap_name(maelys_sandbox_policy_capabilities_t cap) {
     return "process-tree confinement";
   case MAELYS_SANDBOX_POLICY_CAP_ROOT_EPHEMERAL_WRITE:
     return "ephemeral writable root";
+  case MAELYS_SANDBOX_POLICY_CAP_NETWORK_REQUIRE_TLS_SNI:
+    return "mediated TLS SNI enforcement";
+  case MAELYS_SANDBOX_POLICY_CAP_NETWORK_PRIVATE_ADDRESSES:
+    return "mediated private-address destinations";
   }
   return "unknown";
 }
@@ -472,8 +484,22 @@ maelys_mir_result_t maelys_sandbox_policy_plan_network_destination_at(
     return MAELYS_MIR_ERR_ARGUMENT;
   const maelys_mir_network_destination_t *destination =
       &p->network_destinations[index];
+  if (destination->flags)
+    return MAELYS_MIR_ERR_UNSUPPORTED;
   *out = (maelys_mir_network_destination_view_t){
       destination->protocol, destination->host, destination->port};
+  return MAELYS_MIR_OK;
+}
+maelys_mir_result_t maelys_sandbox_policy_plan_network_destination_at_ex(
+    const maelys_sandbox_policy_plan_t *p, size_t index,
+    maelys_mir_network_destination_ex_view_t *out) {
+  if (!p || !out || index >= p->network_destination_count)
+    return MAELYS_MIR_ERR_ARGUMENT;
+  const maelys_mir_network_destination_t *destination =
+      &p->network_destinations[index];
+  *out = (maelys_mir_network_destination_ex_view_t){
+      destination->protocol, destination->host, destination->port,
+      destination->flags};
   return MAELYS_MIR_OK;
 }
 int maelys_sandbox_policy_plan_process_tree_required(const maelys_sandbox_policy_plan_t *p) {

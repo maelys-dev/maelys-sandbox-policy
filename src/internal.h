@@ -18,7 +18,9 @@ typedef struct maelys_mir_network_destination {
   maelys_mir_network_protocol_t protocol;
   char *host;
   uint16_t port;
+  maelys_mir_network_destination_flags_t flags;
 } maelys_mir_network_destination_t;
+
 
 struct maelys_mir_builder {
   maelys_mir_fs_rule_t *rules;

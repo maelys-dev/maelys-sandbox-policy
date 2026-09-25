@@ -214,6 +214,22 @@ static int integer_port(json_parser_t *p, uint16_t *out) {
   *out = (uint16_t)value;
   return 1;
 }
+static int boolean(json_parser_t *p, int *out) {
+  ws(p);
+  if (p->size - p->at >= 4u && memcmp(p->data + p->at, "true", 4) == 0) {
+    p->at += 4u;
+    *out = 1;
+  } else if (p->size - p->at >= 5u &&
+             memcmp(p->data + p->at, "false", 5) == 0) {
+    p->at += 5u;
+    *out = 0;
+  } else {
+    return fail(p, "expected boolean");
+  }
+  if (p->at < p->size && isalnum(p->data[p->at]))
+    return fail(p, "expected boolean");
+  return 1;
+}
 static int key_sep(json_parser_t *p, char **out) {
   *out = string(p);
   if (!*out)
@@ -526,12 +542,22 @@ static int parse_network_destination(json_parser_t *p,
   unsigned seen = 0;
   char *protocol = NULL, *host = NULL;
   uint16_t port = 0;
+  maelys_mir_network_destination_flags_t flags = 0;
   int first = 1, more;
   while ((more = next_member(p, &first)) > 0) {
     char *k = NULL;
     if (!key_sep(p, &k))
       goto bad;
-    if (equals(k, "protocol")) {
+    if (equals(k, "requireTlsSni") || equals(k, "allowPrivateAddresses")) {
+      int sni = equals(k, "requireTlsSni"), value = 0;
+      if (!seen_key(p, &seen, sni ? 8u : 16u, k) || !boolean(p, &value)) {
+        free(k);
+        goto bad;
+      }
+      if (value)
+        flags |= sni ? MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI
+                     : MAELYS_MIR_NETWORK_DESTINATION_ALLOW_PRIVATE_ADDRESSES;
+    } else if (equals(k, "protocol")) {
       if (!seen_key(p, &seen, 1u, k)) {
         free(k);
         goto bad;
@@ -564,12 +590,12 @@ static int parse_network_destination(json_parser_t *p,
   }
   if (more < 0)
     goto bad;
-  if (seen != 7u || !equals(protocol, "tcp")) {
+  if ((seen & 7u) != 7u || !equals(protocol, "tcp")) {
     fail(p, "network destination requires protocol tcp, host, and port");
     goto bad;
   }
-  maelys_mir_result_t result = maelys_mir_builder_add_network_destination(
-      b, MAELYS_MIR_NETWORK_PROTOCOL_TCP, host, port, p->error);
+  maelys_mir_result_t result = maelys_mir_builder_add_network_destination_ex(
+      b, MAELYS_MIR_NETWORK_PROTOCOL_TCP, host, port, flags, p->error);
   free(protocol);
   free(host);
   --p->depth;

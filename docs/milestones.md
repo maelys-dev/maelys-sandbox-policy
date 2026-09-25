@@ -1,4 +1,4 @@
-# Milestones implemented through 0.4.0
+# Milestones implemented through 0.5.0
 
 ## MIR track
 
@@ -18,6 +18,10 @@
 - **M6 — Root disposition:** MIR v3 makes `read-only` versus
   `ephemeral-write` a canonical, digest-covered decision. Scratch sizing and
   overlay implementation remain execution concerns and do not enter policy.
+- **M7 — Destination flags:** each mediated destination carries canonical
+  `requireTlsSni` and `allowPrivateAddresses` decisions, both off by default.
+  They reuse zero bytes of the MIR v3 record, so unflagged policies keep their
+  digests and 0.4.x decoders reject flagged ones.
 
 ## Sandbox Policy track
 

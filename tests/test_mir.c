@@ -234,6 +234,156 @@ static void test_network_allowlist(void) {
   maelys_mir_error_free(error);
 }
 
+static maelys_mir_t *compile_destinations(const char *allow) {
+  char json[1024];
+  (void)snprintf(json, sizeof(json),
+                 "{\"formatVersion\":3,\"filesystem\":{\"default\":\"deny\","
+                 "\"rules\":[]},\"network\":{\"mode\":\"mediated\",\"allow\":"
+                 "[%s]},\"root\":{\"mode\":\"read-only\"},\"process\":"
+                 "{\"treeConfinement\":\"disabled\"}}",
+                 allow);
+  maelys_mir_t *mir = NULL;
+  char *error = NULL;
+  (void)maelys_mir_compile_json((const uint8_t *)json, strlen(json), &mir,
+                                &error);
+  maelys_mir_error_free(error);
+  return mir;
+}
+
+static maelys_mir_network_destination_flags_t
+flags_of(const maelys_mir_t *mir, const char *host) {
+  for (size_t i = 0; i < maelys_mir_network_destination_count(mir); ++i) {
+    maelys_mir_network_destination_ex_view_t d;
+    CHECK_OK(maelys_mir_network_destination_at_ex(mir, i, &d));
+    if (strcmp(d.host, host) == 0)
+      return d.flags;
+  }
+  return UINT32_C(0xffffffff);
+}
+
+static void test_network_destination_flags(void) {
+  const maelys_mir_network_destination_flags_t sni =
+      MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI;
+  const maelys_mir_network_destination_flags_t priv =
+      MAELYS_MIR_NETWORK_DESTINATION_ALLOW_PRIVATE_ADDRESSES;
+  char *e = NULL;
+
+  /* Explicit false flags keep the 0.4.x identity. */
+  maelys_mir_t *plain = compile_destinations(
+      "{\"protocol\":\"tcp\",\"host\":\"github.com\",\"port\":443}");
+  maelys_mir_t *explicit_false = compile_destinations(
+      "{\"protocol\":\"tcp\",\"host\":\"github.com\",\"port\":443,"
+      "\"requireTlsSni\":false,\"allowPrivateAddresses\":false}");
+  CHECK(plain && explicit_false);
+  char plain_hex[65], false_hex[65];
+  CHECK_OK(maelys_mir_digest_hex(plain, plain_hex, &e));
+  CHECK_OK(maelys_mir_digest_hex(explicit_false, false_hex, &e));
+  CHECK(strcmp(plain_hex, false_hex) == 0);
+  maelys_mir_network_destination_view_t legacy;
+  CHECK_OK(maelys_mir_network_destination_at(plain, 0, &legacy));
+
+  /* Duplicates merge restrictively: SNI by OR, private addresses by AND. */
+  maelys_mir_t *mir = compile_destinations(
+      "{\"protocol\":\"tcp\",\"host\":\"github.com\",\"port\":443,"
+      "\"requireTlsSni\":true},"
+      "{\"protocol\":\"tcp\",\"host\":\"GitHub.com\",\"port\":443,"
+      "\"allowPrivateAddresses\":true},"
+      "{\"protocol\":\"tcp\",\"host\":\"registry.internal\",\"port\":5000,"
+      "\"allowPrivateAddresses\":true,\"requireTlsSni\":true}");
+  CHECK(mir != NULL);
+  CHECK(maelys_mir_network_destination_count(mir) == 2u);
+  CHECK(flags_of(mir, "github.com") == sni);
+  CHECK(flags_of(mir, "registry.internal") == (sni | priv));
+  CHECK(maelys_mir_network_destination_at(mir, 0, &legacy) ==
+        MAELYS_MIR_ERR_UNSUPPORTED);
+
+  char mir_hex[65];
+  CHECK_OK(maelys_mir_digest_hex(mir, mir_hex, &e));
+  CHECK(strcmp(mir_hex, plain_hex) != 0);
+
+  uint8_t *bytes = NULL;
+  size_t size = 0;
+  maelys_mir_t *decoded = NULL;
+  CHECK_OK(maelys_mir_encode(mir, &bytes, &size, &e));
+  /* First network record follows the 20-byte header (no filesystem rules). */
+  const uint8_t *record = bytes + 20;
+  CHECK(record[0] == 2u && record[4] == sni && record[5] == 0u);
+  CHECK(record[6] == 0u && record[7] == strlen("github.com"));
+  /* A 0.4.x decoder reads bytes 4..7 as one length and must reject it. */
+  uint32_t legacy_length = ((uint32_t)record[4] << 24) |
+                           ((uint32_t)record[5] << 16) |
+                           ((uint32_t)record[6] << 8) | record[7];
+  CHECK(legacy_length > MAELYS_MIR_MAX_NETWORK_HOST_BYTES);
+  CHECK_OK(maelys_mir_decode(bytes, size, &decoded, &e));
+  char decoded_hex[65];
+  CHECK_OK(maelys_mir_digest_hex(decoded, decoded_hex, &e));
+  CHECK(strcmp(mir_hex, decoded_hex) == 0);
+  CHECK(flags_of(decoded, "registry.internal") == (sni | priv));
+
+  uint8_t *tampered = malloc(size);
+  memcpy(tampered, bytes, size);
+  tampered[20 + 4] = 0x04u;
+  CHECK(maelys_mir_check_canonical(tampered, size, &e) == MAELYS_MIR_ERR_FORMAT);
+  maelys_mir_error_free(e);
+  e = NULL;
+  memcpy(tampered, bytes, size);
+  tampered[20 + 5] = 0x01u;
+  CHECK(maelys_mir_check_canonical(tampered, size, &e) == MAELYS_MIR_ERR_FORMAT);
+  maelys_mir_error_free(e);
+  e = NULL;
+  free(tampered);
+
+  maelys_mir_builder_t *b = NULL;
+  CHECK_OK(maelys_mir_builder_create(&b, &e));
+  CHECK(maelys_mir_builder_add_network_destination_ex(
+            b, MAELYS_MIR_NETWORK_PROTOCOL_TCP, "github.com", 443u, 0x4u,
+            &e) == MAELYS_MIR_ERR_ARGUMENT);
+  maelys_mir_builder_destroy(b);
+  maelys_mir_error_free(e);
+  e = NULL;
+
+  static const char *const invalid[] = {
+      "{\"protocol\":\"tcp\",\"host\":\"a.com\",\"port\":1,\"requireTlsSni\":1}",
+      "{\"protocol\":\"tcp\",\"host\":\"a.com\",\"port\":1,"
+      "\"requireTlsSni\":truex}",
+      "{\"protocol\":\"tcp\",\"host\":\"a.com\",\"port\":1,"
+      "\"requireTlsSni\":true,\"requireTlsSni\":true}",
+      "{\"protocol\":\"tcp\",\"host\":\"a.com\",\"port\":1,"
+      "\"allowPrivateAddresses\":\"true\"}",
+      "{\"protocol\":\"tcp\",\"host\":\"a.com\",\"requireTlsSni\":true}",
+  };
+  for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+    maelys_mir_t *rejected = compile_destinations(invalid[i]);
+    CHECK(rejected == NULL);
+    maelys_mir_destroy(rejected);
+  }
+
+  /* Composition keeps the narrower decision per destination. */
+  maelys_mir_t *base = compile_destinations(
+      "{\"protocol\":\"tcp\",\"host\":\"registry.internal\",\"port\":5000,"
+      "\"allowPrivateAddresses\":true}");
+  maelys_mir_t *ceiling = compile_destinations(
+      "{\"protocol\":\"tcp\",\"host\":\"registry.internal\",\"port\":5000,"
+      "\"requireTlsSni\":true}");
+  maelys_mir_t *effective = NULL;
+  CHECK_OK(maelys_mir_restrict(base, ceiling, &effective, &e));
+  CHECK(flags_of(effective, "registry.internal") == sni);
+  maelys_mir_destroy(effective);
+  effective = NULL;
+  CHECK_OK(maelys_mir_restrict(base, base, &effective, &e));
+  CHECK(flags_of(effective, "registry.internal") == priv);
+  maelys_mir_destroy(effective);
+
+  maelys_mir_destroy(ceiling);
+  maelys_mir_destroy(base);
+  maelys_mir_bytes_free(bytes);
+  maelys_mir_destroy(decoded);
+  maelys_mir_destroy(mir);
+  maelys_mir_destroy(explicit_false);
+  maelys_mir_destroy(plain);
+  maelys_mir_error_free(e);
+}
+
 static void test_noncanonical(void) {
   maelys_mir_t *m = build_order(0);
   uint8_t *bytes = NULL;
@@ -292,6 +442,7 @@ int main(void) {
   test_ephemeral_root_identity();
   test_json();
   test_network_allowlist();
+  test_network_destination_flags();
   test_artifact_digest();
   test_noncanonical();
   test_restrictive_overlay();
