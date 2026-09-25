@@ -41,3 +41,8 @@ if ! grep -Fq "## $version " CHANGELOG.md; then
   echo 'VERSION has no matching changelog entry' >&2
   exit 1
 fi
+if ! grep -Fq "#define MAELYS_SANDBOX_POLICY_VERSION \"$version\"" \
+  include/maelys/sandbox_policy.h; then
+  echo 'sandbox_policy.h does not carry VERSION; run scripts/sync-version.sh' >&2
+  exit 1
+fi

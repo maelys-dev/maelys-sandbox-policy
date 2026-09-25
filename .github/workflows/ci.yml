@@ -2,6 +2,7 @@ name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -13,18 +14,25 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # The socle's product CI: `make check` on the three release targets, the
+  # sanitizers and the fuzz smoke run on Linux with clang, and the socle drift
+  # check. The jobs below cover what it does not: other compilers and runners,
+  # WASM/TypeScript conformance, Docker and package contents.
+  socle:
+    uses: maelys-dev/maelys-release/.github/workflows/check-product.yml@75351e9343016d50f2140a46d664987902726c71 # v0.61.0
+    with:
+      product: maelys-sandbox-policy
+      sanitizer_command: make asan && make ubsan && make tsan
+      fuzz_command: >-
+        make fuzz && build/fuzz/fuzz_decode -max_total_time=10 &&
+        build/fuzz/fuzz_json -max_total_time=10
+
   native:
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
-            cc: gcc
-          - os: ubuntu-24.04
-            cc: clang
-          - os: ubuntu-24.04-arm
-            cc: clang
-          - os: macos-15
             cc: clang
           - os: macos-26
             cc: clang
@@ -35,29 +43,15 @@ jobs:
         run: test "$(uname -m)" = arm64
       - run: make check CC=${{ matrix.cc }}
 
-  sanitizers:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - run: sudo apt-get update && sudo apt-get install --yes clang libclang-rt-18-dev
-      - run: make asan CC=clang
-      - run: make ubsan CC=clang
-      - run: make tsan CC=clang
-
-  fuzz-smoke:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - run: sudo apt-get update && sudo apt-get install --yes clang
-      - run: make fuzz CC=clang
-      - run: build/fuzz/fuzz_decode -max_total_time=10
-      - run: build/fuzz/fuzz_json -max_total_time=10
-
   portable-conformance:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - run: sudo apt-get update && sudo apt-get install --yes emscripten nodejs npm
+      - run: |
+          # A broken third-party apt source of the runner image must not fail an
+          # install of Ubuntu archive packages: the update reports, the install decides.
+          sudo apt-get update || echo "::warning::apt-get update reported errors; the install decides"
+          sudo apt-get install --yes emscripten nodejs npm
       - run: make playground-dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -87,7 +81,9 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install Linux packaging tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --yes build-essential dpkg-dev rpm
+        run: |
+          sudo apt-get update || echo "::warning::apt-get update reported errors; the install decides"
+          sudo apt-get install --yes build-essential dpkg-dev rpm
       - run: bash scripts/package-release.sh ${{ matrix.target }}
       - name: Verify package contents
         shell: bash
