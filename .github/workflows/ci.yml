@@ -23,9 +23,7 @@ jobs:
     with:
       product: maelys-sandbox-policy
       sanitizer_command: make asan && make ubsan && make tsan
-      fuzz_command: >-
-        make fuzz && build/fuzz/fuzz_decode -max_total_time=10 &&
-        build/fuzz/fuzz_json -max_total_time=10
+      fuzz_command: make fuzz
 
   native:
     strategy:

@@ -16,7 +16,7 @@ POLICY_SRC := src/sandbox_policy.c
 MIR_OBJ := $(MIR_SRC:%.c=$(BUILD)/%.o)
 POLICY_OBJ := $(POLICY_SRC:%.c=$(BUILD)/%.o)
 
-.PHONY: all check clean asan ubsan tsan fuzz install wasm wasm-check reference-check conformance-check playground-dist
+.PHONY: all check clean asan ubsan tsan fuzz fuzz-build install wasm wasm-check reference-check conformance-check playground-dist
 all: $(BUILD)/lib/libmaelys-mir.a $(BUILD)/lib/libmaelys-sandbox-policy.a $(BUILD)/bin/maelys-policy
 
 $(BUILD)/%.o: %.c
@@ -92,10 +92,17 @@ tsan:
 	$(MAKE) clean
 	$(MAKE) check CFLAGS='-std=c11 -O1 -g -fno-omit-frame-pointer -fsanitize=thread'
 
-fuzz: $(BUILD)/lib/libmaelys-mir.a
+FUZZ_SECONDS ?= 10
+
+fuzz-build: $(BUILD)/lib/libmaelys-mir.a
 	@mkdir -p $(BUILD)/fuzz
 	$(CC) $(FEATURE_DEFS) -std=c11 -O1 -g -fsanitize=fuzzer,address $(INCLUDES) fuzz/fuzz_decode.c $(MIR_SRC) -o $(BUILD)/fuzz/fuzz_decode
 	$(CC) $(FEATURE_DEFS) -std=c11 -O1 -g -fsanitize=fuzzer,address $(INCLUDES) fuzz/fuzz_json.c $(MIR_SRC) -o $(BUILD)/fuzz/fuzz_json
+
+# A bounded run, as the fleet's `make fuzz` is: it belongs in CI.
+fuzz: fuzz-build
+	$(BUILD)/fuzz/fuzz_decode -max_total_time=$(FUZZ_SECONDS)
+	$(BUILD)/fuzz/fuzz_json -max_total_time=$(FUZZ_SECONDS)
 
 $(BUILD)/pkgconfig/%.pc: pkgconfig/%.pc.in VERSION
 	@mkdir -p $(@D)
