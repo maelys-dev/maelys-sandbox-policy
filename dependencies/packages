@@ -1,0 +1,3 @@
+[linux]
+# make check runs the agent-cli-spec conformance kit, a Python program.
+python3
