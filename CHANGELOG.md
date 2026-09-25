@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- release through the shared maelys-release socle (v0.61.0): the generated
+  `release.yml` and Homebrew tap workflow replace the hand-written release
+  workflow, `scripts/cut-release.sh` and `scripts/update-tap-formula.sh`;
+  `ci.yml` calls the socle's `check-product.yml`;
+- `maelys-release.conf` declares `scripts/sync-version.sh`, which copies
+  `VERSION` into `sandbox_policy.h` during a cut, and `make check` refuses a
+  header that disagrees with `VERSION`;
+- fix the Homebrew formula test, which still wrote a format v2 policy.
+
 ## 0.4.1 — 2026-09-03
 
 - relicense from MIT to the Mozilla Public License 2.0, the license of every
