@@ -16,8 +16,9 @@ concurrency:
 jobs:
   # The socle's product CI: `make check` on the three release targets, the
   # sanitizers and the fuzz smoke run on Linux with clang, and the socle drift
-  # check. The jobs below cover what it does not: other compilers and runners,
-  # WASM/TypeScript conformance, Docker and package contents.
+  # check, which regenerates docs/cli.md. The jobs below cover what it does
+  # not: other compilers and runners, WASM/TypeScript conformance, Docker and
+  # package contents.
   socle:
     uses: maelys-dev/maelys-release/.github/workflows/check-product.yml@75351e9343016d50f2140a46d664987902726c71 # v0.61.0
     with:
@@ -37,6 +38,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      # One root for every pin, exported for this job: the build reads
+      # $MAELYS_DEPENDENCIES_DIR and nothing beside the repository.
+      - run: sh scripts/checkout-dependencies.sh "$RUNNER_TEMP/dependencies" >>"$GITHUB_ENV"
       - if: runner.os == 'macOS'
         run: test "$(uname -m)" = arm64
       - run: make check CC=${{ matrix.cc }}
@@ -45,6 +49,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      # One root for every pin, exported for this job: the build reads
+      # $MAELYS_DEPENDENCIES_DIR and nothing beside the repository.
+      - run: sh scripts/checkout-dependencies.sh "$RUNNER_TEMP/dependencies" >>"$GITHUB_ENV"
       - run: |
           # A broken third-party apt source of the runner image must not fail an
           # install of Ubuntu archive packages: the update reports, the install decides.
@@ -61,6 +68,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      # One root for every pin, exported for this job: the build reads
+      # $MAELYS_DEPENDENCIES_DIR and nothing beside the repository.
+      - run: sh scripts/checkout-dependencies.sh "$RUNNER_TEMP/dependencies" >>"$GITHUB_ENV"
       - run: scripts/test-docker.sh
 
   package:
@@ -77,6 +87,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      # One root for every pin, exported for this job: the build reads
+      # $MAELYS_DEPENDENCIES_DIR and nothing beside the repository.
+      - run: sh scripts/checkout-dependencies.sh "$RUNNER_TEMP/dependencies" >>"$GITHUB_ENV"
       - name: Install Linux packaging tools
         if: runner.os == 'Linux'
         run: |

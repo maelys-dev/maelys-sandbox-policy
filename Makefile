@@ -11,12 +11,34 @@ PREFIX ?= /usr/local
 DESTDIR ?=
 VERSION := $(shell sed -n '1p' VERSION)
 
+# The command line is built on maelys-cli and speaks agent-cli/v2, whose
+# conformance kit comes from agent-cli-spec. Both are pinned under
+# dependencies/ and read under MAELYS_DEPENDENCIES_DIR, never from a sibling
+# working copy: run 'sh scripts/checkout-dependencies.sh DIR' and export the
+# lines it prints. maelys-release.conf declares `[dependencies] apart`, so the
+# socle sets the variable in CI and in the release. The libraries and the WASM
+# build need neither.
+MAELYS_CLI_DIR ?= $(MAELYS_DEPENDENCIES_DIR)/maelys-cli
+MAELYS_CLI_TAG := $(word 1,$(shell cat dependencies/maelys-cli.pin))
+MAELYS_CLI_PIN := $(word 2,$(shell cat dependencies/maelys-cli.pin))
+MAELYS_CLI_BUILD := $(abspath $(BUILD)/deps/maelys-cli)
+MAELYS_CLI_LIB := $(MAELYS_CLI_BUILD)/lib/libmaelys_cli.a
+MAELYS_CLI_EMBED := $(MAELYS_CLI_DIR)/tools/maelys-cli-embed
+MAELYS_SPEC_DIR ?= $(MAELYS_DEPENDENCIES_DIR)/agent-cli-spec
+MAELYS_SPEC_TAG := $(word 1,$(shell cat dependencies/agent-cli-spec.pin))
+MAELYS_SPEC_PIN := $(word 2,$(shell cat dependencies/agent-cli-spec.pin))
+GENERATED := $(BUILD)/generated
+CLI_SCHEMAS := $(wildcard cli/schemas/*.json)
+CLI_SCHEMA_SYMBOLS := $(foreach schema,$(CLI_SCHEMAS),\
+	policy_$(subst -,_,$(basename $(notdir $(schema))))_schema=$(schema))
+
 MIR_SRC := src/common.c src/sha256.c src/mir.c src/source_json.c src/inspect_json.c
 POLICY_SRC := src/sandbox_policy.c
 MIR_OBJ := $(MIR_SRC:%.c=$(BUILD)/%.o)
 POLICY_OBJ := $(POLICY_SRC:%.c=$(BUILD)/%.o)
 
-.PHONY: all check clean asan ubsan tsan fuzz fuzz-build install wasm wasm-check reference-check conformance-check playground-dist
+.PHONY: all check clean asan ubsan tsan fuzz fuzz-build install wasm wasm-check reference-check conformance-check playground-dist \
+	check-dependencies check-cli-contract check-spec-contract agent-cli-check
 all: $(BUILD)/lib/libmaelys-mir.a $(BUILD)/lib/libmaelys-sandbox-policy.a $(BUILD)/bin/maelys-policy
 
 $(BUILD)/%.o: %.c
@@ -31,9 +53,53 @@ $(BUILD)/lib/libmaelys-sandbox-policy.a: $(POLICY_OBJ)
 	@mkdir -p $(@D)
 	$(AR) rcs $@ $^
 
-$(BUILD)/bin/maelys-policy: $(BUILD)/cli/maelys-policy.o $(BUILD)/lib/libmaelys-mir.a
+check-dependencies:
+	@test -n "$(MAELYS_DEPENDENCIES_DIR)$(MAELYS_CLI_DIR)" -a -f "$(MAELYS_CLI_DIR)/include/maelys/cli.h" || \
+		{ echo "MAELYS_DEPENDENCIES_DIR is unset or holds no maelys-cli: run 'sh scripts/checkout-dependencies.sh DIR' and export the lines it prints" >&2; exit 1; }
+
+check-cli-contract: check-dependencies
+	@test "$$(git -C "$(MAELYS_CLI_DIR)" rev-parse HEAD)" = "$(MAELYS_CLI_PIN)" || \
+		{ echo "maelys-cli must be pinned to $(MAELYS_CLI_TAG) ($(MAELYS_CLI_PIN))" >&2; exit 1; }
+	@git -C "$(MAELYS_CLI_DIR)" diff --quiet "$(MAELYS_CLI_PIN)" -- || \
+		{ echo "pinned maelys-cli checkout is modified" >&2; exit 1; }
+
+check-spec-contract: check-dependencies
+	@test -f "$(MAELYS_SPEC_DIR)/conformance/run.py" || \
+		{ echo "MAELYS_SPEC_DIR must name agent-cli-spec" >&2; exit 1; }
+	@test "$$(git -C "$(MAELYS_SPEC_DIR)" rev-parse HEAD)" = "$(MAELYS_SPEC_PIN)" || \
+		{ echo "agent-cli-spec must be pinned to $(MAELYS_SPEC_TAG) ($(MAELYS_SPEC_PIN))" >&2; exit 1; }
+	@test "$$(sed -n 1p "$(MAELYS_CLI_DIR)/dependencies/agent-cli-spec.pin")" = "$(MAELYS_SPEC_TAG)" || \
+		{ echo "agent-cli-spec $(MAELYS_SPEC_TAG) is not the version maelys-cli $(MAELYS_CLI_TAG) targets" >&2; exit 1; }
+
+# Only the command line links libmaelys_cli; the two libraries never do.
+$(MAELYS_CLI_LIB): check-cli-contract
+	$(MAKE) -C $(MAELYS_CLI_DIR) BUILD=$(MAELYS_CLI_BUILD) CC=$(CC) CPPFLAGS= \
+		CFLAGS='$(CFLAGS)' $(MAELYS_CLI_LIB)
+
+$(GENERATED)/policy_schemas.h: $(CLI_SCHEMAS) | check-dependencies
+	@mkdir -p $(@D)
+	sh $(MAELYS_CLI_EMBED) --header $(CLI_SCHEMA_SYMBOLS) >$@
+
+$(GENERATED)/policy_schemas.c: $(CLI_SCHEMAS) | check-dependencies
+	@mkdir -p $(@D)
+	sh $(MAELYS_CLI_EMBED) $(CLI_SCHEMA_SYMBOLS) >$@
+
+$(BUILD)/generated/policy_schemas.o: $(GENERATED)/policy_schemas.c
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/cli/maelys-policy.o: CPPFLAGS += -isystem $(MAELYS_CLI_DIR)/include -I$(GENERATED)
+$(BUILD)/cli/maelys-policy.o: $(GENERATED)/policy_schemas.h | check-dependencies
+
+$(BUILD)/bin/maelys-policy: $(BUILD)/cli/maelys-policy.o $(BUILD)/generated/policy_schemas.o \
+		$(BUILD)/lib/libmaelys-mir.a $(MAELYS_CLI_LIB)
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $^ -o $@
+
+# The contract's own kit drives the built binary from the outside: describe,
+# every envelope and each command's declared output schema. It only reads.
+agent-cli-check: $(BUILD)/bin/maelys-policy check-spec-contract
+	python3 $(MAELYS_SPEC_DIR)/conformance/run.py $(abspath $(BUILD)/bin/maelys-policy)
 
 $(BUILD)/tests/test_mir: $(BUILD)/tests/test_mir.o $(BUILD)/lib/libmaelys-mir.a
 	@mkdir -p $(@D)
@@ -54,6 +120,7 @@ check: all $(BUILD)/tests/test_mir $(BUILD)/tests/test_sandbox_policy $(BUILD)/t
 	sh tests/test_cli.sh $(BUILD)/bin/maelys-policy
 	sh tests/test_vectors.sh $(BUILD)/bin/maelys-policy
 	sh scripts/audit-boundaries.sh
+	$(MAKE) agent-cli-check
 
 wasm:
 	@mkdir -p $(BUILD)/wasm
@@ -124,4 +191,4 @@ install: all $(BUILD)/pkgconfig/maelys-mir.pc $(BUILD)/pkgconfig/maelys-sandbox-
 clean:
 	rm -rf $(BUILD)
 
--include $(MIR_OBJ:.o=.d) $(POLICY_OBJ:.o=.d)
+-include $(MIR_OBJ:.o=.d) $(POLICY_OBJ:.o=.d) $(BUILD)/cli/maelys-policy.d

@@ -29,7 +29,16 @@ lifecycle, Seatbelt, Bubblewrap and execution receipts.
 
 ## Build and test
 
+The libraries have no dependency. The `maelys-policy` command is built on
+[maelys-cli](https://github.com/maelys-dev/maelys-cli), pinned with the
+[agent-cli-spec](https://github.com/maelys-dev/agent-cli-spec) conformance kit
+under `dependencies/`. Fetch both into a directory outside the repository and
+name it in `MAELYS_DEPENDENCIES_DIR` (`maelys-release dependencies DIR --apply`
+also refreshes an existing one):
+
 ```sh
+export MAELYS_DEPENDENCIES_DIR="$HOME/.cache/maelys-sandbox-policy/dependencies"
+sh scripts/checkout-dependencies.sh "$MAELYS_DEPENDENCIES_DIR"
 make check
 make asan
 make ubsan
@@ -38,12 +47,18 @@ make tsan
 
 ## CLI
 
+`maelys-policy` speaks `agent-cli/v2`: `describe --format json` returns its
+catalog, every command answers with a JSON envelope under `--format json`, and
+`compile` plans until it is given `--apply`. The generated reference is
+[docs/cli.md](docs/cli.md).
+
 ```sh
-build/bin/maelys-policy compile examples/workspace.json -o policy.mir
-build/bin/maelys-policy validate policy.mir
+build/bin/maelys-policy compile examples/workspace.json --output policy.mir --apply
+build/bin/maelys-policy validate policy.mir        # exit 2 when not canonical MIR
 build/bin/maelys-policy hash policy.mir
 build/bin/maelys-policy inspect policy.mir
 build/bin/maelys-policy artifact-hash examples/workspace.json
+build/bin/maelys-policy describe --summary --format json --compact
 ```
 
 ## Portable tooling (the v2.5 milestone)

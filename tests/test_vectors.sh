@@ -8,7 +8,7 @@ trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
 
 for source in "$root"/tests/vectors/*.source.json; do
   stem=$(basename "$source" .source.json)
-  "$cli" compile "$source" -o "$tmp_dir/$stem.mir"
+  "$cli" compile "$source" --output "$tmp_dir/$stem.mir" --apply >/dev/null
   cmp "$tmp_dir/$stem.mir" "$root/tests/vectors/$stem.mir"
   "$cli" inspect "$tmp_dir/$stem.mir" >"$tmp_dir/$stem.inspect.json"
   cmp "$tmp_dir/$stem.inspect.json" "$root/tests/vectors/$stem.inspect.json"

@@ -1,3 +1,7 @@
+# Rendered by maelys-release from this template: @URL@ and @SHA256@ are
+# replaced with the released source archive of one tag, and the pinned
+# maelys-cli below is copied from dependencies/maelys-cli.pin of that tag by
+# scripts/render-homebrew-formula.sh.
 class MaelysSandboxPolicy < Formula
   desc "Compile portable sandbox decisions into canonical MIR and host plans"
   homepage "https://policy.maelys.dev"
@@ -5,16 +9,26 @@ class MaelysSandboxPolicy < Formula
   sha256 "@SHA256@"
   license "MPL-2.0"
 
+  resource "maelys-cli" do
+    url "https://github.com/maelys-dev/maelys-cli.git",
+        tag:      "@CLI_TAG@",
+        revision: "@CLI_PIN@"
+  end
+
   def install
-    system "make", "install", "PREFIX=#{prefix}"
+    # The Makefile verifies the maelys-cli checkout against
+    # dependencies/maelys-cli.pin before it links maelys-policy on it.
+    cli_dir = buildpath/"vendor/maelys-cli"
+    resource("maelys-cli").stage cli_dir
+    system "make", "install", "PREFIX=#{prefix}", "MAELYS_CLI_DIR=#{cli_dir}"
   end
 
   test do
     (testpath/"policy.json").write <<~JSON
       {"formatVersion":3,"filesystem":{"default":"deny","rules":[]},"network":{"mode":"none"},"root":{"mode":"read-only"},"process":{"treeConfinement":"disabled"}}
     JSON
-    system bin/"maelys-policy", "compile", "policy.json", "-o", "policy.mir"
+    system bin/"maelys-policy", "compile", "policy.json", "--output", "policy.mir", "--apply"
     system bin/"maelys-policy", "validate", "policy.mir"
-    assert_equal version.to_s, shell_output("#{bin}/maelys-policy --version").strip
+    assert_equal version.to_s, shell_output("#{bin}/maelys-policy version --field version").strip
   end
 end

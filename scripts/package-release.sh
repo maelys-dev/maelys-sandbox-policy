@@ -26,7 +26,7 @@ rm -f "$dist"/*"$version"*"$target"* 2>/dev/null || true
 make clean check
 stage="$tmp/stage"
 make install DESTDIR="$stage" PREFIX=/usr/local
-test "$("$stage/usr/local/bin/maelys-policy" --version)" = "$version"
+test "$("$stage/usr/local/bin/maelys-policy" version --field version)" = "$version"
 grep -Fq "Version: $version" "$stage/usr/local/lib/pkgconfig/maelys-sandbox-policy.pc"
 
 tar_name="maelys-sandbox-policy-${version}-${target}.tar.gz"

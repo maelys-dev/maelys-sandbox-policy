@@ -27,6 +27,8 @@ jobs:
     with:
       product: maelys-sandbox-policy
       tag: ${{ inputs.tag || github.ref_name }}
+      dependency_checkout: |
+        sh scripts/checkout-dependencies.sh "$RUNNER_TEMP/dependencies" >>"$GITHUB_ENV"
 
   tap-maelys-sandbox-policy:
     needs: release
@@ -39,6 +41,7 @@ jobs:
     with:
       product: maelys-sandbox-policy
       tag: ${{ inputs.tag || github.ref_name }}
+      render_command: sh scripts/render-homebrew-formula.sh TAG OUTPUT maelys-sandbox-policy
       bottles: '["macos-15","macos-26"]'
     secrets:
       tap_token: ${{ secrets.HOMEBREW_TAP_TOKEN }}

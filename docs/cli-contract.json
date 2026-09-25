@@ -1,0 +1,964 @@
+{
+  "contract": "agent-cli/v2",
+  "programs": {
+    "maelys-policy": {
+      "cliApi": 1,
+      "commands": [
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "help",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "name": "COMMAND_ID",
+                "required": false,
+                "summary": "Stable command identifier whose help is shown.",
+                "variadic": false
+              }
+            ],
+            "options": [],
+            "passthrough": false,
+            "synopsis": "help [COMMAND_ID] | --help"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "commands": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "commands"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "help"
+          ],
+          "purpose": "Show the generated CLI guide or one command's help.",
+          "usage": "help [COMMAND_ID] | --help"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "version",
+          "input": {
+            "constraints": [],
+            "operands": [],
+            "options": [],
+            "passthrough": false,
+            "synopsis": "version | --version"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "cliApi": {
+                "type": "integer"
+              },
+              "contract": {
+                "const": "agent-cli/v2"
+              },
+              "framework": {
+                "type": "string"
+              },
+              "product": {
+                "type": "string"
+              },
+              "program": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "product",
+              "program",
+              "version",
+              "contract",
+              "cliApi",
+              "framework"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "version"
+          ],
+          "purpose": "Return product identity.",
+          "usage": "version | --version"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "describe",
+          "input": {
+            "constraints": [
+              {
+                "kind": "requires",
+                "options": [
+                  "--prefix",
+                  "--summary"
+                ]
+              }
+            ],
+            "operands": [
+              {
+                "name": "COMMAND_ID",
+                "required": false,
+                "summary": "Stable command identifier returned by the catalog.",
+                "variadic": false
+              }
+            ],
+            "options": [
+              {
+                "conflictsWith": [],
+                "long": "--summary",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Return the compact command inventory without output schemas."
+              },
+              {
+                "argument": {
+                  "name": "PREFIX",
+                  "pattern": "^[a-z]([a-z0-9.-]*[a-z0-9-])?$",
+                  "type": "string"
+                },
+                "conflictsWith": [
+                  "COMMAND_ID"
+                ],
+                "long": "--prefix",
+                "repeatable": false,
+                "required": false,
+                "requires": [
+                  "--summary"
+                ],
+                "summary": "Restrict the summary to one command namespace: the command named PREFIX and every command whose identifier starts with PREFIX followed by a dot."
+              }
+            ],
+            "passthrough": false,
+            "synopsis": "describe [COMMAND_ID] [--summary] [--prefix PREFIX]"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": true,
+            "description": "Command catalog, summary or single descriptor.",
+            "required": [
+              "schemaVersion",
+              "kind",
+              "program",
+              "commands"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "describe"
+          ],
+          "purpose": "Return the machine-readable catalog, summary or one descriptor.",
+          "usage": "describe [COMMAND_ID] [--summary] [--prefix PREFIX]"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "completion",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "choices": [
+                  "bash",
+                  "zsh",
+                  "fish"
+                ],
+                "name": "SHELL",
+                "required": true,
+                "summary": "Shell whose completion script is printed.",
+                "type": "choice",
+                "variadic": false
+              }
+            ],
+            "options": [],
+            "passthrough": false,
+            "synopsis": "completion SHELL"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "script": {
+                "type": "string"
+              },
+              "shell": {
+                "enum": [
+                  "bash",
+                  "zsh",
+                  "fish"
+                ]
+              }
+            },
+            "required": [
+              "shell",
+              "script"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "completion"
+          ],
+          "purpose": "Print the shell completion script generated from the catalog.",
+          "usage": "completion SHELL"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": true,
+          "id": "complete.candidates",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "name": "WORDS",
+                "required": false,
+                "summary": "Command line words after the program name; the last one is the prefix being completed.",
+                "variadic": true
+              }
+            ],
+            "options": [],
+            "passthrough": false,
+            "synopsis": "__complete [WORDS...]"
+          },
+          "outputMode": "json-records",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "count": {
+                "type": "integer"
+              },
+              "records": {
+                "items": {
+                  "required": [
+                    "word"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "count",
+              "records"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "__complete"
+          ],
+          "purpose": "Return completion candidates for a partial command line.",
+          "usage": "__complete [WORDS...]"
+        },
+        {
+          "available": true,
+          "effect": {
+            "apply": "apply",
+            "plan": "preview"
+          },
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "compile",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "name": "SOURCE",
+                "required": true,
+                "summary": "Strict JSON policy source (format v3).",
+                "variadic": false
+              }
+            ],
+            "options": [
+              {
+                "argument": {
+                  "name": "FILE",
+                  "type": "path"
+                },
+                "conflictsWith": [],
+                "long": "--output",
+                "repeatable": false,
+                "required": true,
+                "requires": [],
+                "summary": "Destination of the canonical MIR."
+              },
+              {
+                "conflictsWith": [],
+                "long": "--replace",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Allow replacing an existing output atomically."
+              },
+              {
+                "conflictsWith": [],
+                "long": "--apply",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Apply the reviewed transaction; omission returns a read-only plan."
+              }
+            ],
+            "passthrough": false,
+            "synopsis": "compile SOURCE --output FILE [--replace] [--apply]"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "bytes": {
+                "minimum": 20,
+                "type": "integer"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "plan",
+                  "apply"
+                ]
+              },
+              "output": {
+                "type": "string"
+              },
+              "precondition": {
+                "additionalProperties": false,
+                "properties": {
+                  "replace": {
+                    "type": "boolean"
+                  },
+                  "targetAbsent": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "targetAbsent",
+                  "replace"
+                ],
+                "type": "object"
+              },
+              "source": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode",
+              "changed",
+              "source",
+              "output",
+              "bytes",
+              "digest",
+              "precondition"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "compile"
+          ],
+          "purpose": "Compile a JSON policy source into canonical MIR.",
+          "usage": "compile SOURCE --output FILE [--replace] [--apply]"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "validate",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "name": "POLICY",
+                "required": true,
+                "summary": "Canonical MIR file.",
+                "variadic": false
+              }
+            ],
+            "options": [],
+            "passthrough": false,
+            "synopsis": "validate POLICY"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "diagnostics": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "pattern": "^MIR_[A-Z_]+$",
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "formatVersion": {
+                "const": 3
+              },
+              "path": {
+                "type": "string"
+              },
+              "valid": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "valid",
+              "path",
+              "formatVersion",
+              "diagnostics"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "validate"
+          ],
+          "purpose": "Check that a file is canonical MIR; exit 2 when it is not.",
+          "usage": "validate POLICY"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "hash",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "name": "POLICY",
+                "required": true,
+                "summary": "Canonical MIR file.",
+                "variadic": false
+              }
+            ],
+            "options": [],
+            "passthrough": false,
+            "synopsis": "hash POLICY"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "algorithm": {
+                "const": "sha256"
+              },
+              "digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "algorithm",
+              "digest"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "hash"
+          ],
+          "purpose": "Print the decision digest of canonical MIR.",
+          "usage": "hash POLICY"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "inspect",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "name": "POLICY",
+                "required": true,
+                "summary": "Canonical MIR file.",
+                "variadic": false
+              }
+            ],
+            "options": [],
+            "passthrough": false,
+            "synopsis": "inspect POLICY"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "filesystem": {
+                "additionalProperties": false,
+                "properties": {
+                  "default": {
+                    "const": "deny"
+                  },
+                  "rules": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "access": {
+                          "enum": [
+                            "read",
+                            "write",
+                            "deny"
+                          ]
+                        },
+                        "missing": {
+                          "enum": [
+                            "error",
+                            "skip"
+                          ]
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "root": {
+                          "enum": [
+                            "minimal-runtime",
+                            "workspace",
+                            "temp",
+                            "host"
+                          ]
+                        },
+                        "scope": {
+                          "enum": [
+                            "exact",
+                            "tree"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "access",
+                        "root",
+                        "path",
+                        "scope",
+                        "missing"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "default",
+                  "rules"
+                ],
+                "type": "object"
+              },
+              "identity": {
+                "additionalProperties": false,
+                "properties": {
+                  "algorithm": {
+                    "const": "sha256"
+                  },
+                  "basis": {
+                    "const": "canonical-mir-v3-bytes"
+                  },
+                  "decisionDigest": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "algorithm",
+                  "basis",
+                  "decisionDigest"
+                ],
+                "type": "object"
+              },
+              "inspectionVersion": {
+                "const": 1
+              },
+              "mirFormatVersion": {
+                "const": 3
+              },
+              "network": {
+                "additionalProperties": false,
+                "properties": {
+                  "allow": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "allowPrivateAddresses": {
+                          "const": true
+                        },
+                        "host": {
+                          "type": "string"
+                        },
+                        "port": {
+                          "maximum": 65535,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "protocol": {
+                          "const": "tcp"
+                        },
+                        "requireTlsSni": {
+                          "const": true
+                        }
+                      },
+                      "required": [
+                        "protocol",
+                        "host",
+                        "port"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "mode": {
+                    "enum": [
+                      "none",
+                      "direct",
+                      "mediated"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
+              },
+              "process": {
+                "additionalProperties": false,
+                "properties": {
+                  "treeConfinement": {
+                    "enum": [
+                      "required",
+                      "disabled"
+                    ]
+                  }
+                },
+                "required": [
+                  "treeConfinement"
+                ],
+                "type": "object"
+              },
+              "root": {
+                "additionalProperties": false,
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "read-only",
+                      "ephemeral-write"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "inspectionVersion",
+              "mirFormatVersion",
+              "identity",
+              "filesystem",
+              "network",
+              "root",
+              "process"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "inspect"
+          ],
+          "purpose": "Render the non-normative JSON projection of canonical MIR.",
+          "usage": "inspect POLICY"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "artifact-hash",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "name": "FILE",
+                "required": true,
+                "summary": "Any artifact, such as a policy source.",
+                "variadic": false
+              }
+            ],
+            "options": [],
+            "passthrough": false,
+            "synopsis": "artifact-hash FILE"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "algorithm": {
+                "const": "sha256"
+              },
+              "digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "algorithm",
+              "digest"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "artifact-hash"
+          ],
+          "purpose": "Print the SHA-256 of any file; it carries no policy identity.",
+          "usage": "artifact-hash FILE"
+        }
+      ],
+      "contract": "agent-cli/v2",
+      "globalOptions": [
+        {
+          "argument": {
+            "choices": [
+              "text",
+              "json",
+              "jsonl"
+            ],
+            "name": "VALUE",
+            "type": "choice"
+          },
+          "conflictsWith": [],
+          "default": "text",
+          "long": "--format",
+          "repeatable": false,
+          "required": false,
+          "requires": [],
+          "summary": "Select text for humans, json for one envelope or jsonl for records."
+        },
+        {
+          "conflictsWith": [],
+          "long": "--json",
+          "repeatable": false,
+          "required": false,
+          "requires": [],
+          "summary": "Exact alias of --format json."
+        },
+        {
+          "conflictsWith": [],
+          "long": "--compact",
+          "repeatable": false,
+          "required": false,
+          "requires": [],
+          "summary": "Render JSON on a single line."
+        },
+        {
+          "conflictsWith": [],
+          "long": "--pretty",
+          "repeatable": false,
+          "required": false,
+          "requires": [],
+          "summary": "--pretty=false selects compact JSON."
+        },
+        {
+          "conflictsWith": [],
+          "long": "--non-interactive",
+          "repeatable": false,
+          "required": false,
+          "requires": [],
+          "summary": "Never prompt; fail instead of asking a question."
+        },
+        {
+          "argument": {
+            "choices": [
+              "auto",
+              "always",
+              "never"
+            ],
+            "name": "VALUE",
+            "type": "choice"
+          },
+          "conflictsWith": [],
+          "default": "auto",
+          "long": "--color",
+          "repeatable": false,
+          "required": false,
+          "requires": [],
+          "summary": "Control ANSI colors on terminals."
+        },
+        {
+          "argument": {
+            "choices": [
+              "auto",
+              "always",
+              "never"
+            ],
+            "name": "VALUE",
+            "type": "choice"
+          },
+          "conflictsWith": [],
+          "default": "auto",
+          "long": "--progress",
+          "repeatable": false,
+          "required": false,
+          "requires": [],
+          "summary": "Show the progress of a long run on stderr in text mode: auto only when stderr is a terminal."
+        },
+        {
+          "conflictsWith": [],
+          "long": "--verbose",
+          "repeatable": false,
+          "required": false,
+          "requires": [],
+          "summary": "Add the details of the run on stderr in text mode; silent in JSON."
+        },
+        {
+          "argument": {
+            "choices": [
+              "auto",
+              "always",
+              "never"
+            ],
+            "name": "VALUE",
+            "type": "choice"
+          },
+          "conflictsWith": [],
+          "default": "auto",
+          "long": "--pager",
+          "repeatable": false,
+          "required": false,
+          "requires": [],
+          "summary": "Page the text rendering when stdout is a terminal; never in a pipe, in JSON or under --non-interactive."
+        },
+        {
+          "argument": {
+            "name": "NAME",
+            "type": "string"
+          },
+          "conflictsWith": [],
+          "long": "--field",
+          "repeatable": false,
+          "required": false,
+          "requires": [],
+          "summary": "Render one top-level member of data instead of the whole result, by the text or jsonl rendering rules."
+        },
+        {
+          "conflictsWith": [],
+          "long": "--help",
+          "repeatable": false,
+          "required": false,
+          "requires": [],
+          "summary": "Show the help of the selected command."
+        }
+      ],
+      "invariants": [
+        "usage and agent discovery share one catalog",
+        "transactional commands plan by default and require --apply",
+        "stdout carries success data; stderr carries failures",
+        "--json and --format json are identical",
+        "unknown or duplicated options are refused",
+        "stream commands reject envelope rendering flags",
+        "external commands receive their arguments verbatim"
+      ],
+      "kind": "catalog",
+      "output": {
+        "contract": "agent-cli/v2",
+        "schemaVersion": 2,
+        "stderr": "diagnostics and failure envelopes",
+        "stdout": "success data only; protocol streams are explicit exceptions"
+      },
+      "product": "Maelys Sandbox Policy",
+      "program": "maelys-policy",
+      "schemaVersion": 1
+    }
+  }
+}

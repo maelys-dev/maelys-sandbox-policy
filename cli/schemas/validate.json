@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["valid", "path", "formatVersion", "diagnostics"],
+  "properties": {
+    "valid": {"type": "boolean"},
+    "path": {"type": "string"},
+    "formatVersion": {"const": 3},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"type": "string", "pattern": "^MIR_[A-Z_]+$"},
+          "message": {"type": "string"}
+        }
+      }
+    }
+  }
+}
