@@ -16,7 +16,14 @@ export type NetworkDestination = {
   protocol: "tcp";
   host: string;
   port: number;
+  /* Present only when set, matching the source defaults and the C inspection
+   * projection. */
+  requireTlsSni?: true;
+  allowPrivateAddresses?: true;
 };
+
+const REQUIRE_TLS_SNI = 0x1;
+const ALLOW_PRIVATE_ADDRESSES = 0x2;
 
 export type VerifiedMirV3 = {
   formatVersion: 3;
@@ -162,14 +169,19 @@ export function verifyMirV3(input: Uint8Array): VerifiedMirV3 {
     if (bytes.length - offset < 8 || (bytes[offset] ?? 0) !== 2 ||
         (bytes[offset + 1] ?? 0) !== 1) fail(`network record ${index}`);
     const port = u16(bytes, offset + 2);
-    const size = u32(bytes, offset + 4);
-    if (port === 0 || size === 0 || size > 253 || bytes.length - offset - 8 < size)
+    const flags = bytes[offset + 4] ?? 0;
+    const size = u16(bytes, offset + 6);
+    if (port === 0 || (flags & ~(REQUIRE_TLS_SNI | ALLOW_PRIVATE_ADDRESSES)) !== 0 ||
+        (bytes[offset + 5] ?? 0) !== 0 || size === 0 || size > 253 ||
+        bytes.length - offset - 8 < size)
       fail(`network destination ${index}`);
     const hostBytes = bytes.slice(offset + 8, offset + 8 + size);
     let host: string;
     try { host = decoder.decode(hostBytes); } catch { fail(`network UTF-8 ${index}`); }
     if (!validDnsHost(host)) fail(`non-canonical host ${index}`);
     const destination: ParsedDestination = { protocol: "tcp", host, port, hostBytes };
+    if (flags & REQUIRE_TLS_SNI) destination.requireTlsSni = true;
+    if (flags & ALLOW_PRIVATE_ADDRESSES) destination.allowPrivateAddresses = true;
     const previous = destinations.at(-1);
     if (previous && compareDestination(previous, destination) >= 0)
       fail(`network order or duplicate at ${index}`);
@@ -180,8 +192,8 @@ export function verifyMirV3(input: Uint8Array): VerifiedMirV3 {
 
   const cleanRules = rules.map(({ access, root, path, scope, missing }) =>
     ({ access, root, path, scope, missing }));
-  const cleanDestinations = destinations.map(({ protocol, host, port }) =>
-    ({ protocol, host, port }));
+  const cleanDestinations = destinations.map(
+    ({ hostBytes: _hostBytes, ...destination }) => destination);
   return {
     formatVersion: 3,
     filesystem: { default: "deny", rules: cleanRules },

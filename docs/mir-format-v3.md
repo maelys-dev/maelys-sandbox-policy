@@ -46,12 +46,33 @@ Every network record has an 8-byte prefix followed by `host_length` ASCII bytes.
 | 0 | 1 | record kind, exactly `2` |
 | 1 | 1 | protocol, exactly `1` (TCP) |
 | 2 | 2 | destination port, `1..65535` |
-| 4 | 4 | hostname length, `1..253` |
+| 4 | 1 | destination flags, see below; unknown bits are rejected |
+| 5 | 1 | reserved, exactly zero |
+| 6 | 2 | hostname length, `1..253` |
 | 8 | N | canonical lowercase DNS hostname |
 
-Network records exist exactly when the mode is `mediated`, and that mode
-requires at least one record. They are sorted by `(host, protocol, port)` and
-duplicates are eliminated. `none` and `direct` forbid destination records.
+Destination flags:
+
+| Bit | Source key | Meaning when set |
+|---:|---|---|
+| `0x01` | `requireTlsSni` | the mediator must check that the TLS ClientHello SNI inside the tunnel matches the allowed host |
+| `0x02` | `allowPrivateAddresses` | the host may resolve to a private address; otherwise such resolutions are refused |
+
+Both flags default to clear. Network records exist exactly when the mode is
+`mediated`, and that mode requires at least one record. They are sorted by
+`(host, protocol, port)` and duplicates are eliminated. A duplicate destination
+with different flags is merged restrictively: `requireTlsSni` is kept if
+either entry sets it, `allowPrivateAddresses` only if both do. `none` and
+`direct` forbid destination records.
+
+### Compatibility of destination flags (0.5.0)
+
+Up to 0.4.x, offsets 4..7 held a 32-bit hostname length. Because hostnames
+never exceed 253 bytes, offsets 4..6 were always zero, so a record without
+flags is byte-identical under both layouts and every existing policy keeps its
+digest. A record with any flag reads, under the 0.4.x layout, as a hostname
+longer than 253 bytes, so a 0.4.x decoder rejects it: an older consumer fails
+closed instead of silently dropping a mediation constraint.
 
 ## Canonicality and identity
 

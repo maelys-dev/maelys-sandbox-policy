@@ -9,7 +9,7 @@
 - `maelys-release.conf` declares `scripts/sync-version.sh`, which copies
   `VERSION` into `sandbox_policy.h` during a cut, and `make check` refuses a
   header that disagrees with `VERSION`;
-- fix the Homebrew formula test, which still wrote a format v2 policy.
+- fix the Homebrew formula test, which still wrote a format v2 policy;
 - **breaking (CLI):** `maelys-policy` is rebuilt on maelys-cli 0.5.30 and
   follows `agent-cli/v2`: `describe`, JSON envelopes, stable error codes,
   exit 2 for a completed validation with violations, shell completion and a
@@ -22,7 +22,28 @@
 - pin maelys-cli and agent-cli-spec under `dependencies/`, read under
   `$MAELYS_DEPENDENCIES_DIR`; `make check` runs the agent-cli conformance kit
   against `maelys-policy`, and the Homebrew formula builds the pinned
-  framework.
+  framework;
+- add two per-destination mediation flags to the MIR v3 source and binary
+  formats: `requireTlsSni` (the tunnelled ClientHello SNI must match the allowed
+  host) and `allowPrivateAddresses` (a private resolution is permitted). Both
+  default to `false`;
+- keep every existing policy byte-identical: the flags occupy offset 4 of the
+  network record, and the hostname length moves to a 16-bit field at offset
+  6. Unflagged digests, inspection output and conformance vectors are unchanged;
+  0.4.x decoders reject flagged policies;
+- add `maelys_mir_builder_add_network_destination_ex()`,
+  `maelys_mir_network_destination_at_ex()` and
+  `maelys_sandbox_policy_plan_network_destination_at_ex()`. The original
+  accessors return `MAELYS_MIR_ERR_UNSUPPORTED` for a flagged destination
+  instead of dropping its flags;
+- add capabilities `CAP_NETWORK_REQUIRE_TLS_SNI` and
+  `CAP_NETWORK_PRIVATE_ADDRESSES`; a plan fails closed without them;
+- compose restrictively: duplicates and `maelys_mir_restrict` combine SNI
+  enforcement by OR and private-address permission by AND;
+- add the `mediated-flags` native/WASM/TypeScript conformance vector.
+
+The change is additive, so MIR ABI 3 and Sandbox Policy ABI 4 are unchanged;
+`MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI` serves as a feature test.
 
 ## 0.4.1 — 2026-09-03
 

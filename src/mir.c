@@ -25,6 +25,18 @@ static int valid_network(maelys_mir_network_mode_t v) {
 static int valid_network_protocol(maelys_mir_network_protocol_t v) {
   return v == MAELYS_MIR_NETWORK_PROTOCOL_TCP;
 }
+static int valid_destination_flags(maelys_mir_network_destination_flags_t v) {
+  return (v & ~MAELYS_MIR_NETWORK_DESTINATION_FLAGS_ALL) == 0u;
+}
+/* Restrictive merge of two decisions about the same destination: SNI
+ * enforcement survives if either side requires it; private addresses stay
+ * reachable only if both sides allow them. */
+static maelys_mir_network_destination_flags_t
+merge_destination_flags(maelys_mir_network_destination_flags_t a,
+                        maelys_mir_network_destination_flags_t b) {
+  return ((a | b) & MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI) |
+         ((a & b) & MAELYS_MIR_NETWORK_DESTINATION_ALLOW_PRIVATE_ADDRESSES);
+}
 static int valid_root_mode(maelys_mir_root_mode_t v) {
   return v == MAELYS_MIR_ROOT_READ_ONLY ||
          v == MAELYS_MIR_ROOT_EPHEMERAL_WRITE;
@@ -217,8 +229,16 @@ maelys_mir_builder_set_root_mode(maelys_mir_builder_t *b,
 maelys_mir_result_t maelys_mir_builder_add_network_destination(
     maelys_mir_builder_t *b, maelys_mir_network_protocol_t protocol,
     const char *host, uint16_t port, char **err) {
+  return maelys_mir_builder_add_network_destination_ex(b, protocol, host, port,
+                                                       0u, err);
+}
+
+maelys_mir_result_t maelys_mir_builder_add_network_destination_ex(
+    maelys_mir_builder_t *b, maelys_mir_network_protocol_t protocol,
+    const char *host, uint16_t port,
+    maelys_mir_network_destination_flags_t flags, char **err) {
   if (!b || !valid_network_protocol(protocol) || port == 0 ||
-      !valid_dns_host(host)) {
+      !valid_dns_host(host) || !valid_destination_flags(flags)) {
     maelys_set_error(err, "invalid mediated network destination");
     return MAELYS_MIR_ERR_ARGUMENT;
   }
@@ -230,6 +250,7 @@ maelys_mir_result_t maelys_mir_builder_add_network_destination(
     if (existing->protocol == protocol && existing->port == port &&
         strcmp(existing->host, canonical) == 0) {
       free(canonical);
+      existing->flags = merge_destination_flags(existing->flags, flags);
       return MAELYS_MIR_OK;
     }
   }
@@ -253,7 +274,7 @@ maelys_mir_result_t maelys_mir_builder_add_network_destination(
     b->network_destination_capacity = next;
   }
   b->network_destinations[b->network_destination_count++] =
-      (maelys_mir_network_destination_t){protocol, canonical, port};
+      (maelys_mir_network_destination_t){protocol, canonical, port, flags};
   return MAELYS_MIR_OK;
 }
 
@@ -357,8 +378,22 @@ maelys_mir_result_t maelys_mir_network_destination_at(
     return MAELYS_MIR_ERR_ARGUMENT;
   const maelys_mir_network_destination_t *destination =
       &mir->network_destinations[index];
+  if (destination->flags)
+    return MAELYS_MIR_ERR_UNSUPPORTED;
   *out = (maelys_mir_network_destination_view_t){
       destination->protocol, destination->host, destination->port};
+  return MAELYS_MIR_OK;
+}
+maelys_mir_result_t maelys_mir_network_destination_at_ex(
+    const maelys_mir_t *mir, size_t index,
+    maelys_mir_network_destination_ex_view_t *out) {
+  if (!mir || !out || index >= mir->network_destination_count)
+    return MAELYS_MIR_ERR_ARGUMENT;
+  const maelys_mir_network_destination_t *destination =
+      &mir->network_destinations[index];
+  *out = (maelys_mir_network_destination_ex_view_t){
+      destination->protocol, destination->host, destination->port,
+      destination->flags};
   return MAELYS_MIR_OK;
 }
 int maelys_mir_process_tree_required(const maelys_mir_t *mir) {
@@ -452,7 +487,8 @@ maelys_mir_result_t maelys_mir_encode(const maelys_mir_t *mir, uint8_t **out,
     bytes[at] = 2;
     bytes[at + 1] = (uint8_t)destination->protocol;
     put16(bytes + at + 2, destination->port);
-    put32(bytes + at + 4, (uint32_t)n);
+    bytes[at + 4] = (uint8_t)destination->flags;
+    put16(bytes + at + 6, (uint16_t)n);
     memcpy(bytes + at + NETWORK_RECORD_FIXED_SIZE, destination->host, n);
     at += NETWORK_RECORD_FIXED_SIZE + n;
   }
@@ -548,8 +584,10 @@ static maelys_mir_result_t decode_relaxed(const uint8_t *bytes, size_t size,
     maelys_mir_network_protocol_t protocol =
         (maelys_mir_network_protocol_t)bytes[at + 1];
     uint16_t port = get16(bytes + at + 2);
-    uint32_t n = get32(bytes + at + 4);
+    maelys_mir_network_destination_flags_t flags = bytes[at + 4];
+    uint16_t n = get16(bytes + at + 6);
     if (!valid_network_protocol(protocol) || port == 0 ||
+        !valid_destination_flags(flags) || bytes[at + 5] ||
         n == 0 || n > MAELYS_MIR_MAX_NETWORK_HOST_BYTES ||
         size - at - NETWORK_RECORD_FIXED_SIZE < n) {
       result = MAELYS_MIR_ERR_FORMAT;
@@ -570,8 +608,8 @@ static maelys_mir_result_t decode_relaxed(const uint8_t *bytes, size_t size,
       maelys_set_error(err, "invalid host in MIR network record %u", i);
       break;
     }
-    result = maelys_mir_builder_add_network_destination(
-        b, protocol, host, port, err);
+    result = maelys_mir_builder_add_network_destination_ex(
+        b, protocol, host, port, flags, err);
     free(host);
     if (result)
       break;
@@ -655,9 +693,9 @@ static maelys_mir_result_t copy_network_destinations(
   for (size_t i = 0; i < source->network_destination_count; ++i) {
     const maelys_mir_network_destination_t *destination =
         &source->network_destinations[i];
-    maelys_mir_result_t result = maelys_mir_builder_add_network_destination(
+    maelys_mir_result_t result = maelys_mir_builder_add_network_destination_ex(
         builder, destination->protocol, destination->host, destination->port,
-        err);
+        destination->flags, err);
     if (result != MAELYS_MIR_OK)
       return result;
   }
@@ -711,9 +749,13 @@ maelys_mir_result_t maelys_mir_restrict(const maelys_mir_t *base,
                                   &restriction->network_destinations[j])) {
               const maelys_mir_network_destination_t *destination =
                   &base->network_destinations[i];
-              result = maelys_mir_builder_add_network_destination(
+              result = maelys_mir_builder_add_network_destination_ex(
                   builder, destination->protocol, destination->host,
-                  destination->port, err);
+                  destination->port,
+                  merge_destination_flags(
+                      destination->flags,
+                      restriction->network_destinations[j].flags),
+                  err);
               ++intersection_count;
               break;
             }

@@ -17,6 +17,21 @@ for (const artifact of artifacts) {
   assert.equal(digest, expected);
 }
 
+const flagged = new Uint8Array(await readFile(path.join(vectorRoot, "mediated-flags.mir")));
+const { policy: flaggedPolicy } = await verifyMirV3Digest(flagged);
+assert.deepEqual(flaggedPolicy.network.allow, [
+  { protocol: "tcp", host: "api.github.com", port: 443 },
+  { protocol: "tcp", host: "cache.internal", port: 8080, allowPrivateAddresses: true },
+  { protocol: "tcp", host: "github.com", port: 443, requireTlsSni: true },
+  { protocol: "tcp", host: "registry.internal", port: 5000, requireTlsSni: true,
+    allowPrivateAddresses: true },
+]);
+for (const [offset, value] of [[0x33 + 4, 0x04], [0x33 + 5, 0x01]]) {
+  const tampered = flagged.slice();
+  tampered[offset] = value;
+  await assert.rejects(() => verifyMirV3Digest(tampered), /invalid canonical MIR v3/);
+}
+
 const valid = new Uint8Array(await readFile(path.join(vectorRoot, artifacts[0])));
 const invalid = new Uint8Array(valid.length + 1);
 invalid.set(valid);

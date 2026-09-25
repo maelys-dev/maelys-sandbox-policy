@@ -167,6 +167,57 @@ static void test_mediated_network(void) {
   maelys_mir_error_free(e);
 }
 
+static void test_destination_flags_require_capabilities(void) {
+  maelys_mir_builder_t *b = NULL;
+  maelys_mir_t *m = NULL;
+  maelys_sandbox_policy_host_t *h = NULL;
+  maelys_sandbox_policy_plan_t *p = NULL;
+  char *e = NULL;
+  const maelys_sandbox_policy_capabilities_t flag_caps =
+      MAELYS_SANDBOX_POLICY_CAP_NETWORK_REQUIRE_TLS_SNI |
+      MAELYS_SANDBOX_POLICY_CAP_NETWORK_PRIVATE_ADDRESSES;
+  CHECK_OK(maelys_mir_builder_create(&b, &e));
+  CHECK_OK(maelys_mir_builder_set_network(b, MAELYS_MIR_NETWORK_MEDIATED, &e));
+  CHECK_OK(maelys_mir_builder_add_network_destination_ex(
+      b, MAELYS_MIR_NETWORK_PROTOCOL_TCP, "github.com", 443u,
+      MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI, &e));
+  CHECK_OK(maelys_mir_builder_add_network_destination_ex(
+      b, MAELYS_MIR_NETWORK_PROTOCOL_TCP, "registry.internal", 5000u,
+      MAELYS_MIR_NETWORK_DESTINATION_ALLOW_PRIVATE_ADDRESSES, &e));
+  CHECK_OK(maelys_mir_builder_build(b, &m, &e));
+  CHECK((maelys_sandbox_policy_required_capabilities(m) & flag_caps) ==
+        flag_caps);
+  CHECK_OK(maelys_sandbox_policy_host_create(&h, &e));
+  CHECK_OK(maelys_sandbox_policy_host_set_network_mediator(h, "egress", &e));
+  CHECK(maelys_sandbox_policy_compile(
+            m, h, all_caps | MAELYS_SANDBOX_POLICY_CAP_NETWORK_PRIVATE_ADDRESSES,
+            &p, &e) == MAELYS_MIR_ERR_UNSUPPORTED);
+  CHECK(e && strstr(e, "TLS SNI") != NULL);
+  maelys_mir_error_free(e);
+  e = NULL;
+  CHECK(maelys_sandbox_policy_compile(
+            m, h, all_caps | MAELYS_SANDBOX_POLICY_CAP_NETWORK_REQUIRE_TLS_SNI,
+            &p, &e) == MAELYS_MIR_ERR_UNSUPPORTED);
+  maelys_mir_error_free(e);
+  e = NULL;
+  CHECK_OK(maelys_sandbox_policy_compile(m, h, all_caps | flag_caps, &p, &e));
+  maelys_mir_network_destination_view_t legacy;
+  CHECK(maelys_sandbox_policy_plan_network_destination_at(p, 0, &legacy) ==
+        MAELYS_MIR_ERR_UNSUPPORTED);
+  maelys_mir_network_destination_ex_view_t d;
+  CHECK_OK(maelys_sandbox_policy_plan_network_destination_at_ex(p, 0, &d));
+  CHECK(strcmp(d.host, "github.com") == 0 &&
+        d.flags == MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI);
+  CHECK_OK(maelys_sandbox_policy_plan_network_destination_at_ex(p, 1, &d));
+  CHECK(strcmp(d.host, "registry.internal") == 0 && d.port == 5000u &&
+        d.flags == MAELYS_MIR_NETWORK_DESTINATION_ALLOW_PRIVATE_ADDRESSES);
+  maelys_sandbox_policy_plan_destroy(p);
+  maelys_sandbox_policy_host_destroy(h);
+  maelys_mir_destroy(m);
+  maelys_mir_builder_destroy(b);
+  maelys_mir_error_free(e);
+}
+
 static maelys_mir_t *missing_policy(const char *relative) {
   maelys_mir_builder_t *b = NULL;
   maelys_mir_t *m = NULL;
@@ -215,6 +266,7 @@ int main(void) {
   test_compile();
   test_symlink_escape();
   test_mediated_network();
+  test_destination_flags_require_capabilities();
   test_missing_is_not_io_failure();
   if (failures)
     fprintf(stderr, "%d sandbox test failures\n", failures);

@@ -1,0 +1,56 @@
+{
+  "inspectionVersion": 1,
+  "mirFormatVersion": 3,
+  "identity": {
+    "algorithm": "sha256",
+    "basis": "canonical-mir-v3-bytes",
+    "decisionDigest": "543e57b0ae672a2beb5b714dcd15aed7ae2e709d4858f8537fa287de071642f5"
+  },
+  "filesystem": {
+    "default": "deny",
+    "rules": [
+      {
+        "access": "read",
+        "root": "workspace",
+        "path": "src",
+        "scope": "tree",
+        "missing": "error"
+      }
+    ]
+  },
+  "network": {
+    "mode": "mediated",
+    "allow": [
+      {
+        "protocol": "tcp",
+        "host": "api.github.com",
+        "port": 443
+      },
+      {
+        "protocol": "tcp",
+        "host": "cache.internal",
+        "port": 8080,
+        "allowPrivateAddresses": true
+      },
+      {
+        "protocol": "tcp",
+        "host": "github.com",
+        "port": 443,
+        "requireTlsSni": true
+      },
+      {
+        "protocol": "tcp",
+        "host": "registry.internal",
+        "port": 5000,
+        "requireTlsSni": true,
+        "allowPrivateAddresses": true
+      }
+    ]
+  },
+  "root": {
+    "mode": "read-only"
+  },
+  "process": {
+    "treeConfinement": "disabled"
+  }
+}
