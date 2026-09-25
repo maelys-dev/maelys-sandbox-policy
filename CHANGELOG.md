@@ -40,7 +40,9 @@
   `CAP_NETWORK_PRIVATE_ADDRESSES`; a plan fails closed without them;
 - compose restrictively: duplicates and `maelys_mir_restrict` combine SNI
   enforcement by OR and private-address permission by AND;
-- add the `mediated-flags` native/WASM/TypeScript conformance vector.
+- add the `mediated-flags` native/WASM/TypeScript conformance vector;
+- declare `python3` in `dependencies/packages`: `make check`, which the
+  release packaging runs, drives the agent-cli conformance kit.
 
 The change is additive, so MIR ABI 3 and Sandbox Policy ABI 4 are unchanged;
 `MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI` serves as a feature test.
