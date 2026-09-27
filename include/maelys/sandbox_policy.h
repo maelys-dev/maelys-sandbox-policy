@@ -11,7 +11,7 @@ typedef struct maelys_sandbox_policy_host maelys_sandbox_policy_host_t;
 typedef struct maelys_sandbox_policy_plan maelys_sandbox_policy_plan_t;
 
 #define MAELYS_SANDBOX_POLICY_ABI_VERSION 4u
-#define MAELYS_SANDBOX_POLICY_VERSION "0.5.0"
+#define MAELYS_SANDBOX_POLICY_VERSION "0.5.1"
 
 typedef uint64_t maelys_sandbox_policy_capabilities_t;
 enum {
