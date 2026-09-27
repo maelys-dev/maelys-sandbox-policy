@@ -1,7 +1,9 @@
-# Rendered by maelys-release from this template: @URL@ and @SHA256@ are
-# replaced with the released source archive of one tag, and the pinned
-# maelys-cli below is copied from dependencies/maelys-cli.pin of that tag by
-# scripts/render-homebrew-formula.sh.
+# typed: strict
+# frozen_string_literal: true
+
+# Rendered from packaging/homebrew/maelys-sandbox-policy.rb.in for one tag by
+# scripts/render-homebrew-formula.sh: the source archive, its digest and the
+# pinned maelys-cli below are copied from that tag.
 class MaelysSandboxPolicy < Formula
   desc "Compile portable sandbox decisions into canonical MIR and host plans"
   homepage "https://policy.maelys.dev"
