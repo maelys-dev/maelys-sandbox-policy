@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.1 — 2026-09-27
 
 - fix the Homebrew formula template, whose rendering `brew style` refused
   for its missing `typed` and `frozen_string_literal` headers: v0.5.0 was
