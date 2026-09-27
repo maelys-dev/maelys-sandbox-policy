@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- fix the Homebrew formula template, whose rendering `brew style` refused
+  for its missing `typed` and `frozen_string_literal` headers: v0.5.0 was
+  released on GitHub but its formula never reached the tap.
+
 ## 0.5.0 — 2026-09-27
 
 - release through the shared maelys-release socle (v0.61.0): the generated
