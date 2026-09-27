@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-09-27
 
 - release through the shared maelys-release socle (v0.61.0): the generated
   `release.yml` and Homebrew tap workflow replace the hand-written release
