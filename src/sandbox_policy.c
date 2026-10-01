@@ -344,6 +344,30 @@ static maelys_mir_result_t append_rule(maelys_sandbox_policy_plan_t *p,
     p->required |= MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE;
   return MAELYS_MIR_OK;
 }
+static maelys_mir_result_t record_omitted(maelys_sandbox_policy_plan_t *p,
+                                          const maelys_mir_fs_rule_t *r,
+                                          const char *root) {
+  if (p->omitted_count == p->omitted_capacity) {
+    size_t next = p->omitted_capacity ? p->omitted_capacity * 2u : 8u;
+    maelys_sandbox_policy_omitted_rule_t *grown =
+        realloc(p->omitted, next * sizeof(*grown));
+    if (!grown)
+      return MAELYS_MIR_ERR_MEMORY;
+    p->omitted = grown;
+    p->omitted_capacity = next;
+  }
+  maelys_sandbox_policy_omitted_rule_t rule = {
+      r->access, r->scope, r->root, maelys_strdup(r->relative),
+      root ? maelys_strdup(root) : NULL};
+  if (!rule.relative || (root && !rule.host_root)) {
+    free(rule.relative);
+    free(rule.host_root);
+    return MAELYS_MIR_ERR_MEMORY;
+  }
+  p->omitted[p->omitted_count++] = rule;
+  return MAELYS_MIR_OK;
+}
+
 static maelys_mir_result_t compile_one(const maelys_mir_fs_rule_t *r,
                                        const char *root, int enforce_root,
                                        maelys_sandbox_policy_plan_t *p, char **err) {
@@ -356,7 +380,7 @@ static maelys_mir_result_t compile_one(const maelys_mir_fs_rule_t *r,
      * kept: dropping it would leave the path unprotected the day it is
      * created under a grant. */
     if (r->access != MAELYS_MIR_FS_DENY)
-      return MAELYS_MIR_OK;
+      return record_omitted(p, r, root);
     int exists = 0;
     result = resolve_absent(root, r->relative, enforce_root, &resolved, &exists,
                             err);
@@ -535,6 +559,11 @@ void maelys_sandbox_policy_plan_destroy(maelys_sandbox_policy_plan_t *p) {
   for (size_t i = 0; i < p->rule_count; ++i)
     free(p->rules[i].path);
   free(p->rules);
+  for (size_t i = 0; i < p->omitted_count; ++i) {
+    free(p->omitted[i].relative);
+    free(p->omitted[i].host_root);
+  }
+  free(p->omitted);
   free(p->network_mediator);
   for (size_t i = 0; i < p->network_destination_count; ++i)
     free(p->network_destinations[i].host);
@@ -552,6 +581,20 @@ maelys_sandbox_policy_plan_rule_at(const maelys_sandbox_policy_plan_t *p, size_t
   *out = (maelys_sandbox_policy_resolved_rule_view_t){
       p->rules[i].access, p->rules[i].scope, p->rules[i].path,
       p->rules[i].missing};
+  return MAELYS_MIR_OK;
+}
+size_t maelys_sandbox_policy_plan_omitted_rule_count(
+    const maelys_sandbox_policy_plan_t *p) {
+  return p ? p->omitted_count : 0u;
+}
+maelys_mir_result_t maelys_sandbox_policy_plan_omitted_rule_at(
+    const maelys_sandbox_policy_plan_t *p, size_t i,
+    maelys_sandbox_policy_omitted_rule_view_t *out) {
+  if (!p || !out || i >= p->omitted_count)
+    return MAELYS_MIR_ERR_ARGUMENT;
+  *out = (maelys_sandbox_policy_omitted_rule_view_t){
+      p->omitted[i].access, p->omitted[i].scope, p->omitted[i].root,
+      p->omitted[i].relative, p->omitted[i].host_root};
   return MAELYS_MIR_OK;
 }
 maelys_mir_network_mode_t

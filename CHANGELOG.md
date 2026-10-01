@@ -31,6 +31,18 @@
   requires and what resolution may add, or checks a declared set and exits 2
   naming every missing capability. A declared set is a declaration, not a
   detection of the backend;
+- add `maelys-policy resolve POLICY`, a report of the policy on one host: the
+  resolved rules in plan order with their `missing` requirement, the grants
+  omitted because absent, the capabilities the plan requires and, with
+  `--check`, those a declared backend lacks. Whatever prevents the execution
+  is listed as a blocker and exits 2; no rule is dropped to pass. The host
+  context is given by typed options (`--workspace`, `--temp`, repeatable
+  `--minimal-root`, `--mediator`), not a file;
+- add `maelys-policy evaluate POLICY --path PATH`, the reference evaluator on
+  the plan resolved for that context: the permission, its reason and the
+  deciding rule. A policy that does not resolve gets no answer;
+- add `maelys_sandbox_policy_plan_omitted_rule_count()` and `_at()`: the
+  absent grants resolution left out of a plan;
 - report every missing capability at once, by stable identifier
   (`maelys_sandbox_policy_capability_name()`), including those only resolution
   discovers (`maelys_sandbox_policy_resolved_capabilities()`).
