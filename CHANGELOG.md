@@ -22,7 +22,7 @@
   without a default stops compiling under `-Werror=switch`. Both are
   additions: `MAELYS_MIR_ABI_VERSION` is 5, compatible since 3, and
   `MAELYS_SANDBOX_POLICY_ABI_VERSION` is 7, compatible since 5;
-- corpus version 4: eight `deny-write` cases, and the obligations a backend
+- corpus version 4: nine `deny-write` cases, and the obligations a backend
   proves for a rule that removes access (refuse removal, renaming and
   replacement of the target; hold after an ancestor is renamed). A hard link
   made before the launch is a stated limit;

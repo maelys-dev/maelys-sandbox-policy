@@ -1,0 +1,15 @@
+# A deny-write below a directory the process may rename: the protection
+# follows what it protects when /w/project is renamed. This is the case
+# where the `ancestor-rename` obligation applies.
+rule write tree /w
+rule deny-write tree /w/project/.git
+node directory /w
+node directory /w/project
+node directory /w/project/.git
+node file /w/project/.git/config
+node file /w/project/main.c
+query /w/project/.git/config read deny-write-rule
+query /w/project read-write write-rule
+query /w/project/main.c read-write write-rule
+requires fs-deny-write
+compile accepted
