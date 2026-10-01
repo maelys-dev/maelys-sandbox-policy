@@ -1,0 +1,271 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "boundary",
+    "boundaryDigest",
+    "candidate",
+    "candidateDigest",
+    "scope",
+    "permissionContract",
+    "context",
+    "contained",
+    "exceeds"
+  ],
+  "properties": {
+    "boundary": {
+      "type": "string"
+    },
+    "boundaryDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "candidate": {
+      "type": "string"
+    },
+    "candidateDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "scope": {
+      "const": "host"
+    },
+    "permissionContract": {
+      "const": 2
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimalRoots"
+      ],
+      "properties": {
+        "workspace": {
+          "type": "string"
+        },
+        "temp": {
+          "type": "string"
+        },
+        "minimalRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mediator": {
+          "type": "string"
+        }
+      }
+    },
+    "contained": {
+      "type": "boolean"
+    },
+    "exceeds": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "dimension",
+              "path",
+              "boundaryPermission",
+              "candidatePermission"
+            ],
+            "properties": {
+              "dimension": {
+                "const": "filesystem"
+              },
+              "path": {
+                "type": "string"
+              },
+              "boundaryPermission": {
+                "enum": [
+                  "none",
+                  "read",
+                  "read-write"
+                ]
+              },
+              "candidatePermission": {
+                "enum": [
+                  "none",
+                  "read",
+                  "read-write"
+                ]
+              },
+              "boundaryRule": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "access",
+                  "scope",
+                  "path",
+                  "missing"
+                ],
+                "properties": {
+                  "access": {
+                    "enum": [
+                      "read",
+                      "write",
+                      "deny"
+                    ]
+                  },
+                  "scope": {
+                    "enum": [
+                      "exact",
+                      "tree"
+                    ]
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "missing": {
+                    "enum": [
+                      "error",
+                      "protect-create"
+                    ]
+                  }
+                }
+              },
+              "candidateRule": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "access",
+                  "scope",
+                  "path",
+                  "missing"
+                ],
+                "properties": {
+                  "access": {
+                    "enum": [
+                      "read",
+                      "write",
+                      "deny"
+                    ]
+                  },
+                  "scope": {
+                    "enum": [
+                      "exact",
+                      "tree"
+                    ]
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "missing": {
+                    "enum": [
+                      "error",
+                      "protect-create"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "dimension",
+              "reason",
+              "boundaryMode",
+              "candidateMode"
+            ],
+            "properties": {
+              "dimension": {
+                "const": "network"
+              },
+              "reason": {
+                "enum": [
+                  "mode",
+                  "destination",
+                  "require-tls-sni",
+                  "allow-private-addresses"
+                ]
+              },
+              "boundaryMode": {
+                "enum": [
+                  "none",
+                  "mediated",
+                  "direct"
+                ]
+              },
+              "candidateMode": {
+                "enum": [
+                  "none",
+                  "mediated",
+                  "direct"
+                ]
+              },
+              "destination": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "protocol",
+                  "host",
+                  "port"
+                ],
+                "properties": {
+                  "protocol": {
+                    "const": "tcp"
+                  },
+                  "host": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 65535
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "dimension",
+              "boundaryMode",
+              "candidateMode"
+            ],
+            "properties": {
+              "dimension": {
+                "const": "root"
+              },
+              "boundaryMode": {
+                "const": "read-only"
+              },
+              "candidateMode": {
+                "const": "ephemeral-write"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "dimension",
+              "boundaryTreeConfinement",
+              "candidateTreeConfinement"
+            ],
+            "properties": {
+              "dimension": {
+                "const": "process"
+              },
+              "boundaryTreeConfinement": {
+                "const": "required"
+              },
+              "candidateTreeConfinement": {
+                "const": "disabled"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -129,30 +129,64 @@ legacy_evaluate(const maelys_sandbox_policy_resolved_rule_t *rules,
                             : permission_of(rules[winner].access);
 }
 
-/* A path strictly inside `base` that no rule names nor lies under, so the
- * rules applying to it are exactly the tree rules at or above `base`. Each
- * rule path can spoil one candidate at most, so count + 1 attempts suffice. */
-static char *descendant_witness(
+/*
+ * A path strictly inside `base` that no rule names nor lies under, so the
+ * rules applying to it are exactly the tree rules at or above `base`. It is
+ * `base/maelys-witness-K` for the smallest K no rule path occupies.
+ *
+ * One pass marks the numbers that rule paths occupy, then the first free
+ * one is taken: each rule path can occupy one number at most, so one of
+ * 0..count is free. Trying each number against every rule, as this once
+ * did, costs the product of the two when rules are named like witnesses.
+ */
+#define WITNESS_NAME "maelys-witness-"
+
+char *maelys_plan_descendant_witness(
     const maelys_sandbox_policy_resolved_rule_t *rules, size_t count,
     const char *base) {
   size_t base_length = strlen(base);
-  size_t size = base_length + 48u;
-  char *candidate = malloc(size);
-  if (!candidate)
+  /* The prefix every occupied path starts with: "<base>/maelys-witness-",
+   * the root being its own separator. */
+  size_t stem_length = (base_length == 1u ? 0u : base_length) + 1u +
+                       (sizeof(WITNESS_NAME) - 1u);
+  char *witness = malloc(stem_length + 24u);
+  unsigned char *occupied = calloc(count / 8u + 1u, 1u);
+  if (!witness || !occupied) {
+    free(witness);
+    free(occupied);
     return NULL;
-  for (size_t attempt = 0; attempt <= count; ++attempt) {
-    (void)snprintf(candidate, size, "%s/maelys-witness-%zu",
-                   base_length == 1u ? "" : base, attempt);
-    size_t n = strlen(candidate);
-    int taken = 0;
-    for (size_t i = 0; i < count && !taken; ++i)
-      taken = strncmp(rules[i].path, candidate, n) == 0 &&
-              (rules[i].path[n] == '\0' || rules[i].path[n] == '/');
-    if (!taken)
-      return candidate;
   }
-  free(candidate);
-  return NULL;
+  (void)snprintf(witness, stem_length + 24u, "%s/" WITNESS_NAME,
+                 base_length == 1u ? "" : base);
+  for (size_t i = 0; i < count; ++i) {
+    const char *path = rules[i].path;
+    if (strncmp(path, witness, stem_length) != 0)
+      continue;
+    /* The number as snprintf writes it: digits, no leading zero, ending the
+     * component. Anything else is another name and occupies nothing. */
+    const char *digits = path + stem_length;
+    if (*digits < '0' || *digits > '9' || (*digits == '0' && digits[1] >= '0' &&
+                                           digits[1] <= '9'))
+      continue;
+    size_t number = 0;
+    int in_range = 1;
+    const char *cursor = digits;
+    for (; *cursor >= '0' && *cursor <= '9'; ++cursor) {
+      size_t digit = (size_t)(*cursor - '0');
+      if (in_range && digit <= count && number <= (count - digit) / 10u)
+        number = number * 10u + digit;
+      else
+        in_range = 0; /* beyond count: never a candidate */
+    }
+    if (in_range && (*cursor == '\0' || *cursor == '/'))
+      occupied[number / 8u] |= (unsigned char)(1u << (number % 8u));
+  }
+  size_t free_number = 0;
+  while (occupied[free_number / 8u] & (1u << (free_number % 8u)))
+    ++free_number;
+  free(occupied);
+  (void)snprintf(witness + stem_length, 24u, "%zu", free_number);
+  return witness;
 }
 
 static int conflict_at(const maelys_sandbox_policy_resolved_rule_t *rules,
@@ -191,7 +225,7 @@ maelys_mir_result_t maelys_plan_find_conflict_reference(
       out->witness = maelys_strdup(rules[i].path);
       return out->witness ? MAELYS_MIR_ERR_CONFLICT : MAELYS_MIR_ERR_MEMORY;
     }
-    char *inside = descendant_witness(rules, count, rules[i].path);
+    char *inside = maelys_plan_descendant_witness(rules, count, rules[i].path);
     if (!inside)
       return MAELYS_MIR_ERR_MEMORY;
     if (conflict_at(rules, count, inside, out)) {
@@ -214,7 +248,7 @@ maelys_mir_result_t maelys_plan_find_conflict_reference(
  * without reading any other rule.
  */
 
-static int component_order(const char *a, const char *b) {
+int maelys_path_component_order(const char *a, const char *b) {
   for (;; ++a, ++b) {
     unsigned char x = (unsigned char)*a, y = (unsigned char)*b;
     if (x == y) {
@@ -238,13 +272,13 @@ typedef struct ordered_rule {
 
 static int by_component_order(const void *left, const void *right) {
   const ordered_rule_t *a = left, *b = right;
-  int order = component_order(a->path, b->path);
+  int order = maelys_path_component_order(a->path, b->path);
   if (order)
     return order;
   return a->index < b->index ? -1 : a->index > b->index;
 }
 
-static int strictly_above(const char *ancestor, const char *path) {
+int maelys_path_strictly_above(const char *ancestor, const char *path) {
   size_t n = strlen(ancestor);
   if (n == 1u)
     return path[1] != '\0';
@@ -258,16 +292,12 @@ typedef struct tree_state {
   unsigned nearest;         /* strongest access of the deepest tree rules */
 } tree_state_t;
 
-static unsigned access_bit(maelys_mir_fs_access_t access) {
-  return 1u << (unsigned)access;
-}
-
-static maelys_sandbox_policy_permission_t contract_permission(unsigned accesses) {
-  if (accesses & access_bit(MAELYS_MIR_FS_DENY))
+maelys_sandbox_policy_permission_t maelys_contract_permission(unsigned accesses) {
+  if (accesses & MAELYS_ACCESS_BIT(MAELYS_MIR_FS_DENY))
     return MAELYS_SANDBOX_POLICY_PERMISSION_NONE;
-  if (accesses & access_bit(MAELYS_MIR_FS_WRITE))
+  if (accesses & MAELYS_ACCESS_BIT(MAELYS_MIR_FS_WRITE))
     return MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE;
-  if (accesses & access_bit(MAELYS_MIR_FS_READ))
+  if (accesses & MAELYS_ACCESS_BIT(MAELYS_MIR_FS_READ))
     return MAELYS_SANDBOX_POLICY_PERMISSION_READ;
   return MAELYS_SANDBOX_POLICY_PERMISSION_NONE;
 }
@@ -309,16 +339,16 @@ maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
           &rules[order[next].index];
       unsigned access = (unsigned)rule->access;
       if (rule->scope == MAELYS_MIR_SCOPE_TREE) {
-        tree |= access_bit(rule->access);
+        tree |= MAELYS_ACCESS_BIT(rule->access);
         if (access > strongest_tree)
           strongest_tree = access;
       } else {
-        exact |= access_bit(rule->access);
+        exact |= MAELYS_ACCESS_BIT(rule->access);
         if (access > strongest_exact)
           strongest_exact = access;
       }
     }
-    while (depth && !strictly_above(stack[depth - 1u].path, path))
+    while (depth && !maelys_path_strictly_above(stack[depth - 1u].path, path))
       --depth;
     unsigned above = depth ? stack[depth - 1u].accesses : 0u;
     unsigned nearest_above = depth ? stack[depth - 1u].nearest : 0u;
@@ -326,9 +356,9 @@ maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
 
     unsigned at_path = legacy_permission(strongest_exact ? strongest_exact
                                                          : nearest) !=
-                       contract_permission(above | tree | exact);
+                       maelys_contract_permission(above | tree | exact);
     unsigned below =
-        legacy_permission(nearest) != contract_permission(above | tree);
+        legacy_permission(nearest) != maelys_contract_permission(above | tree);
     unsigned found = (at_path ? CONFLICT_AT_PATH : 0u) |
                      (below ? CONFLICT_BELOW : 0u);
     if (found) {
@@ -350,7 +380,7 @@ maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
       continue;
     char *witness = conflicts[i] & CONFLICT_AT_PATH
                         ? maelys_strdup(rules[i].path)
-                        : descendant_witness(rules, count, rules[i].path);
+                        : maelys_plan_descendant_witness(rules, count, rules[i].path);
     if (!witness) {
       result = MAELYS_MIR_ERR_MEMORY;
     } else if (conflict_at(rules, count, witness, out)) {

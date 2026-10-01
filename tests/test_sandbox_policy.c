@@ -602,6 +602,173 @@ static void test_example_without_git(void) {
   CHECK(rmdir(git) == 0 && rmdir(root) == 0);
 }
 
+/* A plan with the given filesystem rule and other dimensions. */
+static maelys_sandbox_policy_plan_t *
+dimension_plan(const maelys_sandbox_policy_host_t *h,
+               maelys_mir_fs_access_t access, const char *relative,
+               maelys_mir_network_mode_t network, const char *host,
+               maelys_mir_network_destination_flags_t flags,
+               maelys_mir_root_mode_t root, int process_tree) {
+  maelys_mir_builder_t *b = NULL;
+  maelys_mir_t *m = NULL;
+  maelys_sandbox_policy_plan_t *p = NULL;
+  char *e = NULL;
+  CHECK_OK(maelys_mir_builder_create(&b, &e));
+  CHECK_OK(maelys_mir_builder_add_fs_rule(
+      b, access, MAELYS_MIR_ROOT_WORKSPACE, relative, MAELYS_MIR_SCOPE_TREE,
+      MAELYS_MIR_MISSING_ERROR, &e));
+  CHECK_OK(maelys_mir_builder_set_network(b, network, &e));
+  if (host)
+    CHECK_OK(maelys_mir_builder_add_network_destination_ex(
+        b, MAELYS_MIR_NETWORK_PROTOCOL_TCP, host, 443u, flags, &e));
+  CHECK_OK(maelys_mir_builder_set_root_mode(b, root, &e));
+  CHECK_OK(maelys_mir_builder_set_process_tree_required(b, process_tree, &e));
+  CHECK_OK(maelys_mir_builder_build(b, &m, &e));
+  CHECK_OK(maelys_sandbox_policy_compile(m, h, UINT64_MAX, &p, &e));
+  maelys_mir_destroy(m);
+  maelys_mir_builder_destroy(b);
+  maelys_mir_error_free(e);
+  return p;
+}
+
+static unsigned exceeds(const maelys_sandbox_policy_plan_t *boundary,
+                        const maelys_sandbox_policy_plan_t *candidate,
+                        maelys_sandbox_policy_containment_t *out) {
+  char *e = NULL;
+  CHECK_OK(maelys_sandbox_policy_plan_contains(boundary, candidate, out, &e));
+  maelys_mir_error_free(e);
+  return out->exceeds;
+}
+
+static void test_containment(void) {
+  char root[] = "/tmp/maelys-sandbox-policy-contain-XXXXXX";
+  CHECK(make_temp_dir(root));
+  char src[512];
+  CHECK(snprintf(src, sizeof(src), "%s/src", root) > 0);
+  CHECK(mkdir(src, 0700) == 0);
+  char *resolved_src = realpath(src, NULL);
+  maelys_sandbox_policy_host_t *h = NULL;
+  char *e = NULL;
+  CHECK_OK(maelys_sandbox_policy_host_create(&h, &e));
+  CHECK_OK(maelys_sandbox_policy_host_set_workspace(h, root, &e));
+  CHECK_OK(maelys_sandbox_policy_host_set_network_mediator(h, "egress", &e));
+  const maelys_mir_network_destination_flags_t sni =
+      MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI;
+  const maelys_mir_network_destination_flags_t priv =
+      MAELYS_MIR_NETWORK_DESTINATION_ALLOW_PRIVATE_ADDRESSES;
+#define PLAN(access, relative, network, host, flags, rootmode, tree)           \
+  dimension_plan(h, access, relative, network, host, flags, rootmode, tree)
+  maelys_sandbox_policy_plan_t *boundary =
+      PLAN(MAELYS_MIR_FS_READ, "", MAELYS_MIR_NETWORK_MEDIATED, "github.com",
+           sni, MAELYS_MIR_ROOT_READ_ONLY, 1);
+  maelys_sandbox_policy_containment_t c;
+
+  /* A sub-agent asking a subtree of what its parent holds is contained. */
+  maelys_sandbox_policy_plan_t *narrower =
+      PLAN(MAELYS_MIR_FS_READ, "src", MAELYS_MIR_NETWORK_NONE, NULL, 0u,
+           MAELYS_MIR_ROOT_READ_ONLY, 1);
+  CHECK(exceeds(boundary, narrower, &c) == 0u);
+  CHECK(c.path == NULL && c.boundary_rule == SIZE_MAX &&
+        c.candidate_destination == SIZE_MAX);
+  maelys_sandbox_policy_containment_clear(&c);
+  /* ...and the converse is not: the parent reads more than the subtree. */
+  CHECK(exceeds(narrower, boundary, &c) ==
+        (MAELYS_SANDBOX_POLICY_DIMENSION_FILESYSTEM |
+         MAELYS_SANDBOX_POLICY_DIMENSION_NETWORK));
+  CHECK(c.network == MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_MODE);
+  CHECK(c.candidate_permission == MAELYS_SANDBOX_POLICY_PERMISSION_READ &&
+        c.boundary_permission == MAELYS_SANDBOX_POLICY_PERMISSION_NONE &&
+        c.boundary_rule == SIZE_MAX && c.candidate_rule == 0u);
+  maelys_sandbox_policy_containment_clear(&c);
+  CHECK(exceeds(boundary, boundary, &c) == 0u);
+  maelys_sandbox_policy_containment_clear(&c);
+
+  /* Filesystem: writing where the boundary only reads, with the witness. */
+  maelys_sandbox_policy_plan_t *writer =
+      PLAN(MAELYS_MIR_FS_WRITE, "src", MAELYS_MIR_NETWORK_NONE, NULL, 0u,
+           MAELYS_MIR_ROOT_READ_ONLY, 1);
+  CHECK(exceeds(boundary, writer, &c) ==
+        MAELYS_SANDBOX_POLICY_DIMENSION_FILESYSTEM);
+  CHECK(c.path && strcmp(c.path, resolved_src) == 0);
+  CHECK(c.boundary_permission == MAELYS_SANDBOX_POLICY_PERMISSION_READ &&
+        c.candidate_permission == MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE &&
+        c.boundary_rule == 0u && c.candidate_rule == 0u);
+  maelys_sandbox_policy_containment_clear(&c);
+  CHECK(c.path == NULL && c.exceeds == 0u);
+
+  /* Network: mode, destination, then each flag. */
+  static const struct {
+    maelys_mir_network_mode_t mode;
+    const char *host;
+    maelys_mir_network_destination_flags_t flags;
+    maelys_sandbox_policy_network_excess_t expected;
+  } network_cases[] = {
+      {MAELYS_MIR_NETWORK_NONE, NULL, 0u,
+       MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_NONE},
+      {MAELYS_MIR_NETWORK_MEDIATED, "github.com", 0x1u,
+       MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_NONE},
+      {MAELYS_MIR_NETWORK_DIRECT, NULL, 0u,
+       MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_MODE},
+      {MAELYS_MIR_NETWORK_MEDIATED, "example.org", 0x1u,
+       MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_DESTINATION},
+      {MAELYS_MIR_NETWORK_MEDIATED, "github.com", 0u,
+       MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_TLS_SNI},
+      {MAELYS_MIR_NETWORK_MEDIATED, "github.com", 0x3u,
+       MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_PRIVATE_ADDRESSES},
+  };
+  for (size_t i = 0; i < sizeof(network_cases) / sizeof(network_cases[0]); ++i) {
+    maelys_sandbox_policy_plan_t *candidate =
+        PLAN(MAELYS_MIR_FS_READ, "src", network_cases[i].mode,
+             network_cases[i].host, network_cases[i].flags,
+             MAELYS_MIR_ROOT_READ_ONLY, 1);
+    unsigned got = exceeds(boundary, candidate, &c);
+    CHECK(c.network == network_cases[i].expected);
+    CHECK(got == (network_cases[i].expected
+                      ? MAELYS_SANDBOX_POLICY_DIMENSION_NETWORK
+                      : 0u));
+    CHECK((c.candidate_destination == 0u) ==
+          (network_cases[i].expected >
+           MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_MODE));
+    maelys_sandbox_policy_containment_clear(&c);
+    maelys_sandbox_policy_plan_destroy(candidate);
+  }
+  /* A direct boundary allows every destination and every flag. */
+  maelys_sandbox_policy_plan_t *direct =
+      PLAN(MAELYS_MIR_FS_READ, "", MAELYS_MIR_NETWORK_DIRECT, NULL, 0u,
+           MAELYS_MIR_ROOT_EPHEMERAL_WRITE, 0);
+  maelys_sandbox_policy_plan_t *private_peer =
+      PLAN(MAELYS_MIR_FS_READ, "src", MAELYS_MIR_NETWORK_MEDIATED,
+           "registry.internal", priv, MAELYS_MIR_ROOT_EPHEMERAL_WRITE, 0);
+  CHECK(exceeds(direct, private_peer, &c) == 0u);
+  maelys_sandbox_policy_containment_clear(&c);
+
+  /* Root and process: the looser mode exceeds the stricter boundary. */
+  CHECK(exceeds(boundary, private_peer, &c) ==
+        (MAELYS_SANDBOX_POLICY_DIMENSION_NETWORK |
+         MAELYS_SANDBOX_POLICY_DIMENSION_ROOT |
+         MAELYS_SANDBOX_POLICY_DIMENSION_PROCESS));
+  maelys_sandbox_policy_containment_clear(&c);
+  CHECK(exceeds(direct, boundary, &c) == 0u);
+  maelys_sandbox_policy_containment_clear(&c);
+
+  CHECK(maelys_sandbox_policy_plan_contains(NULL, boundary, &c, &e) ==
+        MAELYS_MIR_ERR_ARGUMENT);
+  maelys_mir_error_free(e);
+  e = NULL;
+  CHECK(maelys_sandbox_policy_plan_contains(boundary, boundary, NULL, NULL) ==
+        MAELYS_MIR_ERR_ARGUMENT);
+#undef PLAN
+  maelys_sandbox_policy_plan_destroy(private_peer);
+  maelys_sandbox_policy_plan_destroy(direct);
+  maelys_sandbox_policy_plan_destroy(writer);
+  maelys_sandbox_policy_plan_destroy(narrower);
+  maelys_sandbox_policy_plan_destroy(boundary);
+  maelys_sandbox_policy_host_destroy(h);
+  free(resolved_src);
+  maelys_mir_error_free(e);
+  CHECK(rmdir(src) == 0 && rmdir(root) == 0);
+}
+
 int main(void) {
   test_compile();
   test_symlink_escape();
@@ -611,6 +778,7 @@ int main(void) {
   test_missing_is_not_io_failure();
   test_absent_deny();
   test_example_without_git();
+  test_containment();
   if (failures)
     fprintf(stderr, "%d sandbox test failures\n", failures);
   return failures ? 1 : 0;

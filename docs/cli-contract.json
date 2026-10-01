@@ -1313,6 +1313,364 @@
           },
           "external": false,
           "hidden": false,
+          "id": "contains",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "name": "BOUNDARY",
+                "required": true,
+                "summary": "Canonical MIR of the ceiling.",
+                "variadic": false
+              },
+              {
+                "name": "CANDIDATE",
+                "required": true,
+                "summary": "Canonical MIR that must grant nothing more.",
+                "variadic": false
+              }
+            ],
+            "options": [
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--workspace",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory the workspace root stands for."
+              },
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--temp",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory the temp root stands for."
+              },
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--minimal-root",
+                "repeatable": true,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory of the minimal runtime; repeatable."
+              },
+              {
+                "argument": {
+                  "name": "ID",
+                  "type": "string"
+                },
+                "conflictsWith": [],
+                "long": "--mediator",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Trusted network mediator, for a mediated policy."
+              }
+            ],
+            "passthrough": false,
+            "synopsis": "contains BOUNDARY CANDIDATE [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID]"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "boundary": {
+                "type": "string"
+              },
+              "boundaryDigest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "candidate": {
+                "type": "string"
+              },
+              "candidateDigest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "contained": {
+                "type": "boolean"
+              },
+              "context": {
+                "additionalProperties": false,
+                "properties": {
+                  "mediator": {
+                    "type": "string"
+                  },
+                  "minimalRoots": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "temp": {
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "minimalRoots"
+                ],
+                "type": "object"
+              },
+              "exceeds": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "boundaryPermission": {
+                          "enum": [
+                            "none",
+                            "read",
+                            "read-write"
+                          ]
+                        },
+                        "boundaryRule": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "access": {
+                              "enum": [
+                                "read",
+                                "write",
+                                "deny"
+                              ]
+                            },
+                            "missing": {
+                              "enum": [
+                                "error",
+                                "protect-create"
+                              ]
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "scope": {
+                              "enum": [
+                                "exact",
+                                "tree"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "access",
+                            "scope",
+                            "path",
+                            "missing"
+                          ],
+                          "type": "object"
+                        },
+                        "candidatePermission": {
+                          "enum": [
+                            "none",
+                            "read",
+                            "read-write"
+                          ]
+                        },
+                        "candidateRule": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "access": {
+                              "enum": [
+                                "read",
+                                "write",
+                                "deny"
+                              ]
+                            },
+                            "missing": {
+                              "enum": [
+                                "error",
+                                "protect-create"
+                              ]
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "scope": {
+                              "enum": [
+                                "exact",
+                                "tree"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "access",
+                            "scope",
+                            "path",
+                            "missing"
+                          ],
+                          "type": "object"
+                        },
+                        "dimension": {
+                          "const": "filesystem"
+                        },
+                        "path": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "dimension",
+                        "path",
+                        "boundaryPermission",
+                        "candidatePermission"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "boundaryMode": {
+                          "enum": [
+                            "none",
+                            "mediated",
+                            "direct"
+                          ]
+                        },
+                        "candidateMode": {
+                          "enum": [
+                            "none",
+                            "mediated",
+                            "direct"
+                          ]
+                        },
+                        "destination": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "host": {
+                              "type": "string"
+                            },
+                            "port": {
+                              "maximum": 65535,
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "protocol": {
+                              "const": "tcp"
+                            }
+                          },
+                          "required": [
+                            "protocol",
+                            "host",
+                            "port"
+                          ],
+                          "type": "object"
+                        },
+                        "dimension": {
+                          "const": "network"
+                        },
+                        "reason": {
+                          "enum": [
+                            "mode",
+                            "destination",
+                            "require-tls-sni",
+                            "allow-private-addresses"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "dimension",
+                        "reason",
+                        "boundaryMode",
+                        "candidateMode"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "boundaryMode": {
+                          "const": "read-only"
+                        },
+                        "candidateMode": {
+                          "const": "ephemeral-write"
+                        },
+                        "dimension": {
+                          "const": "root"
+                        }
+                      },
+                      "required": [
+                        "dimension",
+                        "boundaryMode",
+                        "candidateMode"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "boundaryTreeConfinement": {
+                          "const": "required"
+                        },
+                        "candidateTreeConfinement": {
+                          "const": "disabled"
+                        },
+                        "dimension": {
+                          "const": "process"
+                        }
+                      },
+                      "required": [
+                        "dimension",
+                        "boundaryTreeConfinement",
+                        "candidateTreeConfinement"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "maxItems": 4,
+                "type": "array"
+              },
+              "permissionContract": {
+                "const": 2
+              },
+              "scope": {
+                "const": "host"
+              }
+            },
+            "required": [
+              "boundary",
+              "boundaryDigest",
+              "candidate",
+              "candidateDigest",
+              "scope",
+              "permissionContract",
+              "context",
+              "contained",
+              "exceeds"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "contains"
+          ],
+          "purpose": "Check that a candidate policy, resolved on this host, grants nothing its boundary does not; exit 2 with a witness when it does.",
+          "usage": "contains BOUNDARY CANDIDATE [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID]"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
           "id": "validate",
           "input": {
             "constraints": [],

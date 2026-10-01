@@ -260,3 +260,102 @@ status=0
   --format json --compact 2>"$tmp_dir/eval-noroot.json" >/dev/null || status=$?
 test "$status" = 1 || fail 'evaluate without the workspace it needs'
 grep -q '"code":"PRECONDITION_FAILED"' "$tmp_dir/eval-noroot.json" || fail 'evaluate missing root code'
+
+# ---- contains: a candidate stays within its boundary, on this host ------------
+policy_from() { # NAME JSON
+  printf '%s' "$2" >"$tmp_dir/$1.json"
+  "$cli" compile "$tmp_dir/$1.json" --output "$tmp_dir/$1.mir" --replace --apply >/dev/null
+}
+contains() { # BOUNDARY CANDIDATE
+  "$cli" contains "$tmp_dir/$1.mir" "$tmp_dir/$2.mir" --workspace "$tmp_dir/ws" \
+    --minimal-root "$tmp_dir/runtime" --format json --compact
+}
+tail_json=',"root":{"mode":"read-only"},"process":{"treeConfinement":"required"}}'
+# The delegation case: a parent reads the workspace, a sub-agent asks for a
+# subtree of it. Nested paths are decided, not left unsupported.
+policy_from child '{"formatVersion":3,"filesystem":{"default":"deny","rules":[{"access":"read","path":{"root":"workspace","relative":"src"}}]},"network":{"mode":"none"}'"$tail_json"
+contains policy child >"$tmp_dir/contains-child.json" || fail 'a subtree of the boundary is not contained'
+grep -q '"contained":true,"exceeds":\[\]' "$tmp_dir/contains-child.json" || fail 'contains verdict'
+grep -q "\"boundaryDigest\":\"$file_hash\"" "$tmp_dir/contains-child.json" || fail 'contains names its boundary'
+test "$("$cli" contains "$tmp_dir/policy.mir" "$tmp_dir/policy.mir" --workspace "$tmp_dir/ws" \
+  --minimal-root "$tmp_dir/runtime" --field contained)" = true || fail 'a policy does not contain itself'
+# The converse exceeds, with the first path in component order as witness.
+status=0
+contains child policy >"$tmp_dir/contains-parent.json" || status=$?
+test "$status" = 2 || fail "an exceeding candidate exited $status, not 2"
+grep -q "\"dimension\":\"filesystem\",\"path\":\"$runtime\",\"boundaryPermission\":\"none\",\"candidatePermission\":\"read\"" \
+  "$tmp_dir/contains-parent.json" || fail 'filesystem witness'
+grep -q '"candidateRule":{"access":"read","scope":"tree"' "$tmp_dir/contains-parent.json" || fail 'deciding rule'
+# What the boundary denies stays denied to the candidate.
+policy_from peeker '{"formatVersion":3,"filesystem":{"default":"deny","rules":[{"access":"read","path":{"root":"workspace","relative":".git"}}]},"network":{"mode":"none"}'"$tail_json"
+status=0
+contains policy peeker >"$tmp_dir/contains-git.json" || status=$?
+test "$status" = 2 || fail 'reading a denied tree is contained'
+grep -q "\"path\":\"$workspace/.git\",\"boundaryPermission\":\"none\",\"candidatePermission\":\"read\",\"boundaryRule\":{\"access\":\"deny\"" \
+  "$tmp_dir/contains-git.json" || fail 'denied tree witness'
+# Every other dimension, each with its own entry.
+policy_from loose '{"formatVersion":3,"filesystem":{"default":"deny","rules":[{"access":"read","path":{"root":"workspace","relative":"src"}}]},"network":{"mode":"direct"},"root":{"mode":"ephemeral-write"},"process":{"treeConfinement":"disabled"}}'
+status=0
+contains policy loose >"$tmp_dir/contains-loose.json" || status=$?
+test "$status" = 2 || fail 'looser modes are contained'
+grep -q '"dimension":"network","reason":"mode","boundaryMode":"none","candidateMode":"direct"' \
+  "$tmp_dir/contains-loose.json" || fail 'network mode excess'
+grep -q '"dimension":"root"' "$tmp_dir/contains-loose.json" || fail 'root excess'
+grep -q '"dimension":"process"' "$tmp_dir/contains-loose.json" || fail 'process excess'
+if grep -q '"dimension":"filesystem"' "$tmp_dir/contains-loose.json"; then fail 'a spurious filesystem excess'; fi
+mediated='{"formatVersion":3,"filesystem":{"default":"deny","rules":[]},"network":{"mode":"mediated","allow":['
+policy_from net-boundary "$mediated"'{"protocol":"tcp","host":"github.com","port":443,"requireTlsSni":true}]}'"$tail_json"
+policy_from net-plain "$mediated"'{"protocol":"tcp","host":"github.com","port":443}]}'"$tail_json"
+policy_from net-other "$mediated"'{"protocol":"tcp","host":"example.org","port":443,"requireTlsSni":true}]}'"$tail_json"
+net() {
+  "$cli" contains "$tmp_dir/$1.mir" "$tmp_dir/$2.mir" --mediator egress --format json --compact
+}
+net net-boundary net-boundary | grep -q '"contained":true' || fail 'mediated self containment'
+status=0
+net net-boundary net-plain >"$tmp_dir/contains-sni.json" || status=$?
+test "$status" = 2 || fail 'dropping TLS SNI is contained'
+grep -q '"reason":"require-tls-sni".*"destination":{"protocol":"tcp","host":"github.com","port":443}' \
+  "$tmp_dir/contains-sni.json" || fail 'TLS SNI excess'
+net net-plain net-boundary | grep -q '"contained":true' || fail 'adding TLS SNI is not contained'
+status=0
+net net-boundary net-other >"$tmp_dir/contains-dest.json" || status=$?
+test "$status" = 2 || fail 'a foreign destination is contained'
+grep -q '"reason":"destination".*"host":"example.org"' "$tmp_dir/contains-dest.json" || fail 'destination excess'
+# A policy that does not resolve is compared with nothing.
+status=0
+"$cli" contains "$tmp_dir/policy.mir" "$tmp_dir/conflict.mir" --workspace "$tmp_dir/ws" \
+  --minimal-root "$tmp_dir/runtime" --format json --compact 2>"$tmp_dir/contains-conflict.json" \
+  >"$tmp_dir/contains-conflict.out" || status=$?
+test "$status" = 1 || fail "contains with a conflicting candidate exited $status, not 1"
+grep -q '"code":"POLICY_FAILED"' "$tmp_dir/contains-conflict.json" || fail 'contains conflict code'
+grep -q 'conflict.mir does not resolve' "$tmp_dir/contains-conflict.json" || fail 'contains names the policy that fails'
+test ! -s "$tmp_dir/contains-conflict.out" || fail 'contains answered without two plans'
+status=0
+"$cli" contains "$tmp_dir/policy.mir" "$tmp_dir/child.mir" --format json --compact \
+  2>"$tmp_dir/contains-noroot.json" >/dev/null || status=$?
+test "$status" = 1 || fail 'contains without the roots it needs'
+grep -q '"code":"PRECONDITION_FAILED"' "$tmp_dir/contains-noroot.json" || fail 'contains missing root code'
+
+# ---- diagnostic priority: the host context before the policy files ------------
+# With an invalid context and an invalid policy file at once, every command
+# that resolves reports the context: options are judged before operand files.
+both_invalid() { # COMMAND [OPERAND...]
+  status=0
+  "$cli" "$@" --workspace "$tmp_dir/absent-root" --format json --compact \
+    2>"$tmp_dir/priority.json" >"$tmp_dir/priority.out" || status=$?
+  test "$status" = 1 || fail "$1 with an invalid context and file exited $status, not 1"
+  grep -q '"code":"VALIDATION_FAILED"' "$tmp_dir/priority.json" ||
+    fail "$1 does not report the invalid context first"
+  grep -q -- '--workspace' "$tmp_dir/priority.json" || fail "$1 does not name --workspace"
+  if grep -q 'NOT_FOUND' "$tmp_dir/priority.json"; then fail "$1 reported the file first"; fi
+  test ! -s "$tmp_dir/priority.out" || fail "$1 wrote to stdout on failure"
+}
+both_invalid resolve "$tmp_dir/no-such.mir"
+both_invalid evaluate "$tmp_dir/no-such.mir" --path /etc/hosts
+both_invalid contains "$tmp_dir/no-such.mir" "$tmp_dir/also-missing.mir"
+# With a valid context, the file is what fails.
+status=0
+"$cli" contains "$tmp_dir/no-such.mir" "$tmp_dir/child.mir" --workspace "$tmp_dir/ws" \
+  --format json --compact 2>"$tmp_dir/priority-file.json" >/dev/null || status=$?
+test "$status" = 1 || fail 'contains with a missing boundary file'
+grep -q '"code":"NOT_FOUND"' "$tmp_dir/priority-file.json" || fail 'missing file code'

@@ -139,6 +139,68 @@ const char *
 maelys_sandbox_policy_permission_name(maelys_sandbox_policy_permission_t value);
 const char *
 maelys_sandbox_policy_reason_name(maelys_sandbox_policy_reason_t value);
+/* The dimensions in which a candidate plan may exceed a boundary plan. */
+enum {
+  MAELYS_SANDBOX_POLICY_DIMENSION_FILESYSTEM = 1u << 0,
+  MAELYS_SANDBOX_POLICY_DIMENSION_NETWORK = 1u << 1,
+  MAELYS_SANDBOX_POLICY_DIMENSION_ROOT = 1u << 2,
+  MAELYS_SANDBOX_POLICY_DIMENSION_PROCESS = 1u << 3
+};
+
+typedef enum maelys_sandbox_policy_network_excess {
+  MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_NONE = 0,
+  /* the candidate's network mode is broader than the boundary's */
+  MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_MODE = 1,
+  /* a candidate destination is not in the boundary's allowlist */
+  MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_DESTINATION = 2,
+  /* the boundary requires TLS SNI on that destination, the candidate not */
+  MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_TLS_SNI = 3,
+  /* the candidate allows private addresses there, the boundary not */
+  MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_PRIVATE_ADDRESSES = 4
+} maelys_sandbox_policy_network_excess_t;
+
+/* The answer of maelys_sandbox_policy_plan_contains(). `exceeds` has one
+ * DIMENSION bit per dimension in which the candidate grants more than the
+ * boundary, zero when it is contained; each such dimension carries one
+ * witness. Release with maelys_sandbox_policy_containment_clear(). */
+typedef struct maelys_sandbox_policy_containment {
+  unsigned exceeds;
+  /* FILESYSTEM: one resolved path, what each plan grants on it, and the
+   * rule deciding each (SIZE_MAX under the default deny). */
+  char *path;
+  maelys_sandbox_policy_permission_t boundary_permission;
+  maelys_sandbox_policy_permission_t candidate_permission;
+  size_t boundary_rule;
+  size_t candidate_rule;
+  /* NETWORK: why, and the candidate destination concerned (SIZE_MAX when
+   * the mode itself exceeds). */
+  maelys_sandbox_policy_network_excess_t network;
+  size_t candidate_destination;
+} maelys_sandbox_policy_containment_t;
+
+/*
+ * Does `candidate` grant nothing that `boundary` does not? Both plans must
+ * have been resolved under the same host context, on the same state of the
+ * filesystem: the function cannot check it. The comparison is exact for the
+ * permissions of the two plans. A filesystem witness is a path of that
+ * model: whether an access to it can be realised on the host is not
+ * established, and what a backend enforces is not either.
+ *
+ * Filesystem: no path receives more from the candidate, with none < read <
+ * read-write. Network: none < mediated < direct; under a mediated boundary
+ * every candidate destination is one of the boundary's, requires TLS SNI
+ * where the boundary does and allows private addresses only where the
+ * boundary does. Root: read-only < ephemeral-write. Process: a boundary
+ * that requires process-tree confinement is not contained by a candidate
+ * that does not.
+ */
+maelys_mir_result_t maelys_sandbox_policy_plan_contains(
+    const maelys_sandbox_policy_plan_t *boundary,
+    const maelys_sandbox_policy_plan_t *candidate,
+    maelys_sandbox_policy_containment_t *out_containment, char **out_error);
+void maelys_sandbox_policy_containment_clear(
+    maelys_sandbox_policy_containment_t *containment);
+
 /* A grant that resolution left out of the plan: its target was absent and
  * its rule said missing: skip. It grants nothing; it is reported so that a
  * reader of the plan knows the rule was seen. A deny is never omitted.

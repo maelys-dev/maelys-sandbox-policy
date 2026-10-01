@@ -140,6 +140,48 @@ now refused before launch by every backend that does not announce
 a reason to skip the protection: another process of the host can create the
 path during the execution, and the workspace grant would then expose it.
 
+## Containment
+
+`maelys_sandbox_policy_plan_contains(boundary, candidate)` answers whether
+the candidate grants nothing the boundary does not. It compares **two
+resolved plans**, which is what lets it decide nested paths: a candidate
+that reads `workspace/src` is within a boundary that reads `workspace`.
+
+**The comparison is exact for the permissions of the two plans.** Take the
+paths named by the rules of both. A path that is none of them receives, from
+each plan, what the tree rules at or above its deepest named ancestor grant.
+Checking every named path and one unnamed descendant of each therefore
+visits every region: at most twice the number of distinct paths. The order
+is none < read < read-write.
+
+**A counter-example is a difference in that model.** It names one path and
+what each plan grants on it. Whether an access to that path can be realised
+on the host is not established: the contract ignores what a path is, so a
+witness may lie beneath a file. Hence a candidate may be reported as
+exceeding where no real access differs; it is never reported as contained
+when a path of the model receives more.
+
+A positive answer holds under three conditions, none of which the function
+can check:
+
+- both plans were resolved under the **same host context**;
+- the filesystem has **not changed** since, for either resolution;
+- the backend **enforces the plans** as the contract states.
+
+The other dimensions are compared by their own order:
+
+| Dimension | The candidate is within the boundary when |
+|---|---|
+| network mode | it is no broader: `none` < `mediated` < `direct` |
+| mediated destinations | each is one of the boundary's, requires TLS SNI where the boundary does, and allows private addresses only where the boundary does; a `direct` boundary allows every destination |
+| root | it is `read-only`, or the boundary is `ephemeral-write` |
+| process | it requires tree confinement, or the boundary does not |
+
+Each dimension that exceeds is reported with one witness; the filesystem
+witness is the first in component order of paths. Capabilities and the
+`missing` requirement of rules are not compared: they say what a backend
+must offer, not what a policy grants.
+
 ## Conformance
 
 A consumer conforms when, for every path, it either **enforces** the
