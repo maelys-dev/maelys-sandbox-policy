@@ -1,4 +1,4 @@
-# Milestones implemented through 0.6.0
+# Milestones implemented through 0.7.0
 
 ## MIR track
 
@@ -36,6 +36,10 @@
   evaluator and a shared corpus make the contract testable by consumers. A
   policy that the earlier most-specific-wins order read differently is
   refused instead of reinterpreted.
+- **S5 — Containment:** whether one resolved plan grants nothing another
+  does not, exactly for the two plans and with a witness per dimension;
+  conflict search and containment in N log N over the resolved rules, with
+  measured resource bounds.
 
 Backends and process launch do not belong to this repository. Maelys Warden
 consumes `SandboxPlan` through an adapter and owns Seatbelt/Bubblewrap
