@@ -19,6 +19,8 @@ Common contract: `agent-cli/v2`. For the machine-readable detail run
 | resolve | `resolve POLICY [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID] [--check] [--available CAPABILITY...]` | read | json-envelope | Resolve a policy on this host and report its rules, what was omitted and what prevents the execution; exit 2 when something does. |
 | evaluate | `evaluate POLICY --path PATH [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID]` | read | json-envelope | State what the policy, resolved on this host, grants on one path, and the rule that decides. |
 | contains | `contains BOUNDARY CANDIDATE [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID]` | read | json-envelope | Check that a candidate policy, resolved on this host, grants nothing its boundary does not; exit 2 with a witness when it does. |
+| diff | `diff BEFORE AFTER [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID] [--check]` | read | json-envelope | Report what changes between two policies resolved on this host; with --check, exit 2 unless they grant the same permissions. |
+| overlaps | `overlaps FIRST SECOND [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID]` | read | json-envelope | Tell whether two policies resolved on this host grant a common access, with a witness. |
 | validate | `validate POLICY` | read | json-envelope | Check that a file is canonical MIR; exit 2 when it is not. |
 | hash | `hash POLICY` | read | json-envelope | Print the decision digest of canonical MIR. |
 | inspect | `inspect POLICY` | read | json-envelope | Render the non-normative JSON projection of canonical MIR. |

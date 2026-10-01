@@ -1387,6 +1387,17 @@
           "outputSchema": {
             "additionalProperties": false,
             "properties": {
+              "analysed": {
+                "items": {
+                  "enum": [
+                    "filesystem",
+                    "network",
+                    "root",
+                    "process"
+                  ]
+                },
+                "type": "array"
+              },
               "boundary": {
                 "type": "string"
               },
@@ -1650,6 +1661,7 @@
               "scope",
               "permissionContract",
               "context",
+              "analysed",
               "contained",
               "exceeds"
             ],
@@ -1660,6 +1672,662 @@
           ],
           "purpose": "Check that a candidate policy, resolved on this host, grants nothing its boundary does not; exit 2 with a witness when it does.",
           "usage": "contains BOUNDARY CANDIDATE [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID]"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "diff",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "name": "BEFORE",
+                "required": true,
+                "summary": "Canonical MIR of the earlier policy.",
+                "variadic": false
+              },
+              {
+                "name": "AFTER",
+                "required": true,
+                "summary": "Canonical MIR of the later policy.",
+                "variadic": false
+              }
+            ],
+            "options": [
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--workspace",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory the workspace root stands for."
+              },
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--temp",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory the temp root stands for."
+              },
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--minimal-root",
+                "repeatable": true,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory of the minimal runtime; repeatable."
+              },
+              {
+                "argument": {
+                  "name": "ID",
+                  "type": "string"
+                },
+                "conflictsWith": [],
+                "long": "--mediator",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Trusted network mediator, for a mediated policy."
+              },
+              {
+                "conflictsWith": [],
+                "long": "--check",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Exit 2 when the two policies do not grant the same permissions on this host."
+              }
+            ],
+            "passthrough": false,
+            "synopsis": "diff BEFORE AFTER [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID] [--check]"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "after": {
+                "type": "string"
+              },
+              "afterDigest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "analysed": {
+                "items": {
+                  "enum": [
+                    "filesystem",
+                    "network",
+                    "root",
+                    "process"
+                  ]
+                },
+                "type": "array"
+              },
+              "before": {
+                "type": "string"
+              },
+              "beforeDigest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "context": {
+                "additionalProperties": false,
+                "properties": {
+                  "mediator": {
+                    "type": "string"
+                  },
+                  "minimalRoots": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "temp": {
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "minimalRoots"
+                ],
+                "type": "object"
+              },
+              "equivalent": {
+                "type": "boolean"
+              },
+              "filesystem": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "below": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "enum": [
+                            "none",
+                            "read",
+                            "read-write"
+                          ]
+                        },
+                        "before": {
+                          "enum": [
+                            "none",
+                            "read",
+                            "read-write"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "before",
+                        "after"
+                      ],
+                      "type": "object"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "self": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "enum": [
+                            "none",
+                            "read",
+                            "read-write"
+                          ]
+                        },
+                        "before": {
+                          "enum": [
+                            "none",
+                            "read",
+                            "read-write"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "before",
+                        "after"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "self",
+                    "below"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "narrows": {
+                "items": {
+                  "enum": [
+                    "filesystem",
+                    "network",
+                    "root",
+                    "process"
+                  ]
+                },
+                "type": "array"
+              },
+              "network": {
+                "additionalProperties": false,
+                "properties": {
+                  "added": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "allowPrivateAddresses": {
+                          "type": "boolean"
+                        },
+                        "host": {
+                          "type": "string"
+                        },
+                        "port": {
+                          "maximum": 65535,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "protocol": {
+                          "const": "tcp"
+                        },
+                        "requireTlsSni": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "protocol",
+                        "host",
+                        "port",
+                        "requireTlsSni",
+                        "allowPrivateAddresses"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "mode": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "after": {
+                        "enum": [
+                          "none",
+                          "mediated",
+                          "direct"
+                        ]
+                      },
+                      "before": {
+                        "enum": [
+                          "none",
+                          "mediated",
+                          "direct"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "before",
+                      "after"
+                    ],
+                    "type": "object"
+                  },
+                  "removed": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "allowPrivateAddresses": {
+                          "type": "boolean"
+                        },
+                        "host": {
+                          "type": "string"
+                        },
+                        "port": {
+                          "maximum": 65535,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "protocol": {
+                          "const": "tcp"
+                        },
+                        "requireTlsSni": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "protocol",
+                        "host",
+                        "port",
+                        "requireTlsSni",
+                        "allowPrivateAddresses"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "added",
+                  "removed"
+                ],
+                "type": "object"
+              },
+              "permissionContract": {
+                "const": 2
+              },
+              "process": {
+                "additionalProperties": false,
+                "properties": {
+                  "after": {
+                    "enum": [
+                      "required",
+                      "disabled"
+                    ]
+                  },
+                  "before": {
+                    "enum": [
+                      "required",
+                      "disabled"
+                    ]
+                  }
+                },
+                "required": [
+                  "before",
+                  "after"
+                ],
+                "type": "object"
+              },
+              "root": {
+                "additionalProperties": false,
+                "properties": {
+                  "after": {
+                    "enum": [
+                      "read-only",
+                      "ephemeral-write"
+                    ]
+                  },
+                  "before": {
+                    "enum": [
+                      "read-only",
+                      "ephemeral-write"
+                    ]
+                  }
+                },
+                "required": [
+                  "before",
+                  "after"
+                ],
+                "type": "object"
+              },
+              "scope": {
+                "const": "host"
+              },
+              "widens": {
+                "items": {
+                  "enum": [
+                    "filesystem",
+                    "network",
+                    "root",
+                    "process"
+                  ]
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "before",
+              "beforeDigest",
+              "after",
+              "afterDigest",
+              "scope",
+              "permissionContract",
+              "context",
+              "analysed",
+              "equivalent",
+              "widens",
+              "narrows",
+              "filesystem",
+              "network",
+              "root",
+              "process"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "diff"
+          ],
+          "purpose": "Report what changes between two policies resolved on this host; with --check, exit 2 unless they grant the same permissions.",
+          "usage": "diff BEFORE AFTER [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID] [--check]"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "overlaps",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "name": "FIRST",
+                "required": true,
+                "summary": "Canonical MIR of one policy.",
+                "variadic": false
+              },
+              {
+                "name": "SECOND",
+                "required": true,
+                "summary": "Canonical MIR of the other policy.",
+                "variadic": false
+              }
+            ],
+            "options": [
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--workspace",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory the workspace root stands for."
+              },
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--temp",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory the temp root stands for."
+              },
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--minimal-root",
+                "repeatable": true,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory of the minimal runtime; repeatable."
+              },
+              {
+                "argument": {
+                  "name": "ID",
+                  "type": "string"
+                },
+                "conflictsWith": [],
+                "long": "--mediator",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Trusted network mediator, for a mediated policy."
+              }
+            ],
+            "passthrough": false,
+            "synopsis": "overlaps FIRST SECOND [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID]"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "analysed": {
+                "items": {
+                  "enum": [
+                    "filesystem",
+                    "network",
+                    "root",
+                    "process"
+                  ]
+                },
+                "type": "array"
+              },
+              "context": {
+                "additionalProperties": false,
+                "properties": {
+                  "mediator": {
+                    "type": "string"
+                  },
+                  "minimalRoots": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "temp": {
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "minimalRoots"
+                ],
+                "type": "object"
+              },
+              "filesystem": {
+                "additionalProperties": false,
+                "properties": {
+                  "readablePath": {
+                    "type": "string"
+                  },
+                  "writablePath": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "first": {
+                "type": "string"
+              },
+              "firstDigest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "network": {
+                "additionalProperties": false,
+                "properties": {
+                  "firstDestination": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allowPrivateAddresses": {
+                        "type": "boolean"
+                      },
+                      "host": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "protocol": {
+                        "const": "tcp"
+                      },
+                      "requireTlsSni": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "protocol",
+                      "host",
+                      "port",
+                      "requireTlsSni",
+                      "allowPrivateAddresses"
+                    ],
+                    "type": "object"
+                  },
+                  "overlaps": {
+                    "type": "boolean"
+                  },
+                  "secondDestination": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allowPrivateAddresses": {
+                        "type": "boolean"
+                      },
+                      "host": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "protocol": {
+                        "const": "tcp"
+                      },
+                      "requireTlsSni": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "protocol",
+                      "host",
+                      "port",
+                      "requireTlsSni",
+                      "allowPrivateAddresses"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "overlaps"
+                ],
+                "type": "object"
+              },
+              "overlaps": {
+                "type": "boolean"
+              },
+              "permissionContract": {
+                "const": 2
+              },
+              "scope": {
+                "const": "host"
+              },
+              "second": {
+                "type": "string"
+              },
+              "secondDigest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "first",
+              "firstDigest",
+              "second",
+              "secondDigest",
+              "scope",
+              "permissionContract",
+              "context",
+              "analysed",
+              "overlaps",
+              "filesystem",
+              "network"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "overlaps"
+          ],
+          "purpose": "Tell whether two policies resolved on this host grant a common access, with a witness.",
+          "usage": "overlaps FIRST SECOND [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID]"
         },
         {
           "available": true,

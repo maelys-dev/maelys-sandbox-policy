@@ -201,6 +201,77 @@ maelys_mir_result_t maelys_sandbox_policy_plan_contains(
 void maelys_sandbox_policy_containment_clear(
     maelys_sandbox_policy_containment_t *containment);
 
+/*
+ * What changes between two resolved plans, under the same conditions as
+ * maelys_sandbox_policy_plan_contains(): same host context, same state of
+ * the filesystem. The plans are equivalent exactly when the diff neither
+ * widens nor narrows any dimension, whatever their rules.
+ */
+typedef struct maelys_sandbox_policy_diff maelys_sandbox_policy_diff_t;
+
+/* One path where the difference between the plans changes. `self` is what
+ * both plans grant on the path itself. `below` is what they grant under it,
+ * down to the next entry, when its two permissions differ; equal `below`
+ * permissions say only that nothing changes there. An entry overrides, for
+ * its path and beneath, the entries of the paths above it, so an entry with
+ * equal permissions is an unchanged exception inside a changed tree. A path
+ * under no entry is unchanged. */
+typedef struct maelys_sandbox_policy_diff_path_view {
+  const char *path;
+  maelys_sandbox_policy_permission_t self_before;
+  maelys_sandbox_policy_permission_t self_after;
+  maelys_sandbox_policy_permission_t below_before;
+  maelys_sandbox_policy_permission_t below_after;
+} maelys_sandbox_policy_diff_path_view_t;
+
+maelys_mir_result_t maelys_sandbox_policy_plan_diff(
+    const maelys_sandbox_policy_plan_t *before,
+    const maelys_sandbox_policy_plan_t *after,
+    maelys_sandbox_policy_diff_t **out_diff, char **out_error);
+void maelys_sandbox_policy_diff_destroy(maelys_sandbox_policy_diff_t *diff);
+/* DIMENSION bits in which `after` grants more, and in which it grants less.
+ * Both zero: the plans are equivalent. One dimension may be in both. */
+unsigned maelys_sandbox_policy_diff_widens(const maelys_sandbox_policy_diff_t *diff);
+unsigned maelys_sandbox_policy_diff_narrows(const maelys_sandbox_policy_diff_t *diff);
+size_t maelys_sandbox_policy_diff_path_count(const maelys_sandbox_policy_diff_t *diff);
+maelys_mir_result_t maelys_sandbox_policy_diff_path_at(
+    const maelys_sandbox_policy_diff_t *diff, size_t index,
+    maelys_sandbox_policy_diff_path_view_t *out_path);
+/* Mediated destinations of `after` that `before` does not hold with the same
+ * flags, as indexes into `after`; and those of `before` that `after` does
+ * not hold, as indexes into `before`. A destination whose flags changed is
+ * in both. */
+size_t maelys_sandbox_policy_diff_added_destination_count(
+    const maelys_sandbox_policy_diff_t *diff);
+size_t maelys_sandbox_policy_diff_added_destination_at(
+    const maelys_sandbox_policy_diff_t *diff, size_t index);
+size_t maelys_sandbox_policy_diff_removed_destination_count(
+    const maelys_sandbox_policy_diff_t *diff);
+size_t maelys_sandbox_policy_diff_removed_destination_at(
+    const maelys_sandbox_policy_diff_t *diff, size_t index);
+
+/* Is there an access both plans grant? `dimensions` has the FILESYSTEM bit
+ * when some path is readable under both, and the NETWORK bit when some
+ * connection is allowed by both. Root mode and process confinement are
+ * constraints on the execution, not accesses: they have no overlap.
+ * Release with maelys_sandbox_policy_overlap_clear(). */
+typedef struct maelys_sandbox_policy_overlap {
+  unsigned dimensions;
+  /* A path both plans let read, and one both let write; NULL when none. */
+  char *read_path;
+  char *write_path;
+  /* The common connection: a destination of each plan, SIZE_MAX for a plan
+   * whose direct network allows every destination. */
+  size_t first_destination;
+  size_t second_destination;
+} maelys_sandbox_policy_overlap_t;
+
+maelys_mir_result_t maelys_sandbox_policy_plan_overlaps(
+    const maelys_sandbox_policy_plan_t *first,
+    const maelys_sandbox_policy_plan_t *second,
+    maelys_sandbox_policy_overlap_t *out_overlap, char **out_error);
+void maelys_sandbox_policy_overlap_clear(maelys_sandbox_policy_overlap_t *overlap);
+
 /* A grant that resolution left out of the plan: its target was absent and
  * its rule said missing: skip. It grants nothing; it is reported so that a
  * reader of the plan knows the rule was seen. A deny is never omitted.

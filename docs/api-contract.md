@@ -59,6 +59,11 @@ using either flag fails closed without the matching capability.
 grants nothing another does not, and names a witness per dimension when it
 does. Its answer is about the two plans as resolved; see the conditions in
 the [permission contract](permission-contract.md#containment).
+`maelys_sandbox_policy_plan_diff()` and
+`maelys_sandbox_policy_plan_overlaps()` read the same regions for what
+changes between two plans and for what both grant. A diff is an owned
+object, released with `maelys_sandbox_policy_diff_destroy()`; its path views
+borrow from it.
 
 The permissions of a plan are defined by the
 [permission contract](permission-contract.md), not by the order of its rules.

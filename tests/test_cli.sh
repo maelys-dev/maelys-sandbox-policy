@@ -359,3 +359,67 @@ status=0
   --format json --compact 2>"$tmp_dir/priority-file.json" >/dev/null || status=$?
 test "$status" = 1 || fail 'contains with a missing boundary file'
 grep -q '"code":"NOT_FOUND"' "$tmp_dir/priority-file.json" || fail 'missing file code'
+
+# ---- diff and overlaps ---------------------------------------------------------
+pair() { # COMMAND FIRST SECOND [OPTION...]
+  command=$1 first=$2 second=$3
+  shift 3
+  "$cli" "$command" "$tmp_dir/$first.mir" "$tmp_dir/$second.mir" --workspace "$tmp_dir/ws" \
+    --minimal-root "$tmp_dir/runtime" --format json --compact "$@"
+}
+# From the example to a policy that writes the workspace and still denies .git.
+policy_from wider '{"formatVersion":3,"filesystem":{"default":"deny","rules":[{"access":"write","path":{"root":"workspace","relative":""}},{"access":"deny","path":{"root":"workspace","relative":".git"}}]},"network":{"mode":"none"}'"$tail_json"
+pair diff policy wider >"$tmp_dir/diff.json" || fail 'diff without --check must exit 0'
+grep -q '"equivalent":false,"widens":\["filesystem"\],"narrows":\["filesystem"\]' "$tmp_dir/diff.json" ||
+  fail 'diff verdict'
+grep -q "{\"path\":\"$workspace\",\"self\":{\"before\":\"read\",\"after\":\"read-write\"},\"below\":{\"before\":\"read\",\"after\":\"read-write\"}}" \
+  "$tmp_dir/diff.json" || fail 'diff does not report the widened tree'
+grep -q "{\"path\":\"$runtime\",\"self\":{\"before\":\"read\",\"after\":\"none\"}" "$tmp_dir/diff.json" ||
+  fail 'diff does not report the removed runtime'
+# .git is denied before and after: an unchanged exception inside the changed tree.
+grep -q "{\"path\":\"$workspace/.git\",\"self\":{\"before\":\"none\",\"after\":\"none\"},\"below\":{\"before\":\"none\",\"after\":\"none\"}}" \
+  "$tmp_dir/diff.json" || fail 'diff does not report the unchanged exception'
+grep -q '"analysed":\["filesystem","network","root","process"\]' "$tmp_dir/diff.json" || fail 'diff scope'
+status=0
+pair diff policy wider --check >/dev/null || status=$?
+test "$status" = 2 || fail "diff --check on different policies exited $status, not 2"
+# Different rules, same permissions: equivalent, nothing to report.
+policy_from redundant '{"formatVersion":3,"filesystem":{"default":"deny","rules":[{"access":"read","path":{"root":"workspace","relative":"src"}},{"access":"read","path":{"root":"workspace","relative":"src"},"scope":"exact"}]},"network":{"mode":"none"}'"$tail_json"
+pair diff child redundant --check >"$tmp_dir/diff-same.json" || fail 'equivalent policies fail diff --check'
+grep -q '"equivalent":true,"widens":\[\],"narrows":\[\],"filesystem":\[\]' "$tmp_dir/diff-same.json" ||
+  fail 'equivalence'
+test "$(pair diff child redundant | sed 's/.*"beforeDigest":"\([0-9a-f]*\)".*"afterDigest":"\([0-9a-f]*\)".*/\1 \2/' |
+  awk '{print ($1 == $2) ? "same" : "different"}')" = different || fail 'equivalent policies should differ in digest here'
+# Network changes: a destination whose flags change is removed and added.
+"$cli" diff "$tmp_dir/net-boundary.mir" "$tmp_dir/net-plain.mir" --mediator egress \
+  --format json --compact >"$tmp_dir/diff-net.json"
+grep -q '"widens":\["network"\],"narrows":\[\]' "$tmp_dir/diff-net.json" || fail 'dropping SNI widens the network'
+grep -q '"added":\[{"protocol":"tcp","host":"github.com","port":443,"requireTlsSni":false' "$tmp_dir/diff-net.json" ||
+  fail 'diff added destination'
+grep -q '"removed":\[{"protocol":"tcp","host":"github.com","port":443,"requireTlsSni":true' "$tmp_dir/diff-net.json" ||
+  fail 'diff removed destination'
+pair diff policy loose >"$tmp_dir/diff-loose.json"
+grep -q '"root":{"before":"read-only","after":"ephemeral-write"},"process":{"before":"required","after":"disabled"}' \
+  "$tmp_dir/diff-loose.json" || fail 'diff of the execution constraints'
+grep -q '"widens":\["network","root","process"\]' "$tmp_dir/diff-loose.json" || fail 'diff widened dimensions'
+
+# overlaps: the example and its sub-agent share the subtree, read-only.
+pair overlaps policy child >"$tmp_dir/overlaps.json"
+grep -q "\"overlaps\":true,\"filesystem\":{\"readablePath\":\"$workspace/src\"}" "$tmp_dir/overlaps.json" ||
+  fail 'overlap witness'
+grep -q '"analysed":\["filesystem","network"\]' "$tmp_dir/overlaps.json" || fail 'overlap scope'
+# The denied tree is shared with nobody.
+pair overlaps policy peeker | grep -q '"overlaps":false,"filesystem":{}' || fail 'a denied tree overlaps'
+pair overlaps wider wider | grep -q "\"writablePath\":\"$workspace\"" || fail 'common writable path'
+"$cli" overlaps "$tmp_dir/net-boundary.mir" "$tmp_dir/net-other.mir" --mediator egress --field overlaps |
+  grep -q false || fail 'distinct destinations overlap'
+"$cli" overlaps "$tmp_dir/net-boundary.mir" "$tmp_dir/net-plain.mir" --mediator egress \
+  --format json --compact | grep -q '"network":{"overlaps":true,"firstDestination":{"protocol":"tcp","host":"github.com"' ||
+  fail 'common destination'
+status=0
+"$cli" diff "$tmp_dir/policy.mir" "$tmp_dir/conflict.mir" --workspace "$tmp_dir/ws" \
+  --minimal-root "$tmp_dir/runtime" --format json --compact 2>"$tmp_dir/diff-conflict.json" >/dev/null || status=$?
+test "$status" = 1 || fail 'diff with a policy that does not resolve'
+grep -q '"code":"POLICY_FAILED"' "$tmp_dir/diff-conflict.json" || fail 'diff conflict code'
+grep -q '"analysed":\["filesystem","network","root","process"\]' "$tmp_dir/contains-child.json" ||
+  fail 'contains scope'

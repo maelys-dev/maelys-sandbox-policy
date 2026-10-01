@@ -779,26 +779,102 @@ static void write_decisive_rule(maelys_cli_json_writer_t *data, const char *key,
   write_resolved_rule(data, &rule);
 }
 
-static int command_contains(maelys_cli_context_t *context) {
-  const char *boundary_path = maelys_cli_operand(context, 0u);
-  const char *candidate_path = maelys_cli_operand(context, 1u);
+/* What a comparison looked at. Anything outside this list was not compared,
+ * and no verdict covers it. */
+static void write_analysed(maelys_cli_json_writer_t *data, int constraints) {
+  (void)maelys_cli_json_key(data, "analysed");
+  (void)maelys_cli_json_begin_array(data);
+  (void)maelys_cli_json_string(data, "filesystem");
+  (void)maelys_cli_json_string(data, "network");
+  if (constraints) {
+    (void)maelys_cli_json_string(data, "root");
+    (void)maelys_cli_json_string(data, "process");
+  }
+  (void)maelys_cli_json_end_array(data);
+}
+
+static void write_destination(maelys_cli_json_writer_t *data,
+                              const maelys_sandbox_policy_plan_t *plan,
+                              size_t index) {
+  maelys_mir_network_destination_ex_view_t d;
+  if (maelys_sandbox_policy_plan_network_destination_at_ex(plan, index, &d) !=
+      MAELYS_MIR_OK)
+    return;
+  (void)maelys_cli_json_begin_object(data);
+  (void)maelys_cli_json_key_string(data, "protocol", "tcp");
+  (void)maelys_cli_json_key_string(data, "host", d.host);
+  (void)maelys_cli_json_key_unsigned(data, "port", d.port);
+  (void)maelys_cli_json_key_boolean(
+      data, "requireTlsSni",
+      (d.flags & MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI) != 0u);
+  (void)maelys_cli_json_key_boolean(
+      data, "allowPrivateAddresses",
+      (d.flags & MAELYS_MIR_NETWORK_DESTINATION_ALLOW_PRIVATE_ADDRESSES) != 0u);
+  (void)maelys_cli_json_end_object(data);
+}
+
+/* Resolves the two policies a comparison names under one host context, so
+ * that the same symbolic root is the same directory in both plans. On
+ * failure it has replied and returns nonzero. */
+static int resolve_pair(maelys_cli_context_t *context,
+                        char first_digest[MAELYS_MIR_DIGEST_HEX_SIZE],
+                        maelys_sandbox_policy_plan_t **first,
+                        char second_digest[MAELYS_MIR_DIGEST_HEX_SIZE],
+                        maelys_sandbox_policy_plan_t **second) {
+  *first = *second = NULL;
   maelys_sandbox_policy_host_t *host = host_context(context);
   if (!host)
-    return MAELYS_CLI_EXIT_FAILURE;
+    return 1;
+  int failed = resolve_operand(context, host, maelys_cli_operand(context, 0u),
+                               first_digest, first) ||
+               resolve_operand(context, host, maelys_cli_operand(context, 1u),
+                               second_digest, second);
+  maelys_sandbox_policy_host_destroy(host);
+  if (failed) {
+    maelys_sandbox_policy_plan_destroy(*first);
+    *first = NULL;
+  }
+  return failed;
+}
+
+static void write_pair_header(maelys_cli_json_writer_t *data,
+                              maelys_cli_context_t *context, const char *first,
+                              const char *first_digest, const char *second,
+                              const char *second_digest) {
+  char key[32];
+  (void)maelys_cli_json_key_string(data, first, maelys_cli_operand(context, 0u));
+  (void)snprintf(key, sizeof(key), "%sDigest", first);
+  (void)maelys_cli_json_key_string(data, key, first_digest);
+  (void)maelys_cli_json_key_string(data, second,
+                                   maelys_cli_operand(context, 1u));
+  (void)snprintf(key, sizeof(key), "%sDigest", second);
+  (void)maelys_cli_json_key_string(data, key, second_digest);
+  (void)maelys_cli_json_key_string(data, "scope", "host");
+  (void)maelys_cli_json_key_unsigned(data, "permissionContract",
+                                     MAELYS_SANDBOX_POLICY_PERMISSION_CONTRACT);
+  write_context(data, context);
+}
+
+static void write_dimensions(maelys_cli_json_writer_t *data, const char *key,
+                             unsigned dimensions) {
+  static const char *const names[] = {"filesystem", "network", "root",
+                                      "process"};
+  (void)maelys_cli_json_key(data, key);
+  (void)maelys_cli_json_begin_array(data);
+  for (unsigned bit = 0; bit < 4u; ++bit)
+    if (dimensions & (1u << bit))
+      (void)maelys_cli_json_string(data, names[bit]);
+  (void)maelys_cli_json_end_array(data);
+}
+
+static int command_contains(maelys_cli_context_t *context) {
+  const char *candidate_path = maelys_cli_operand(context, 1u);
   char boundary_digest[MAELYS_MIR_DIGEST_HEX_SIZE];
   char candidate_digest[MAELYS_MIR_DIGEST_HEX_SIZE];
   maelys_sandbox_policy_plan_t *boundary = NULL, *candidate = NULL;
-  /* One host context for both, so that the same symbolic root is the same
-   * directory in the two plans. */
-  int failed = resolve_operand(context, host, boundary_path, boundary_digest,
-                               &boundary) ||
-               resolve_operand(context, host, candidate_path, candidate_digest,
-                               &candidate);
-  maelys_sandbox_policy_host_destroy(host);
-  if (failed) {
-    maelys_sandbox_policy_plan_destroy(boundary);
+  if (resolve_pair(context, boundary_digest, &boundary, candidate_digest,
+                   &candidate))
     return MAELYS_CLI_EXIT_FAILURE;
-  }
   maelys_sandbox_policy_containment_t found;
   char *error = NULL;
   maelys_mir_result_t result =
@@ -821,14 +897,9 @@ static int command_contains(maelys_cli_context_t *context) {
   maelys_cli_json_writer_t data;
   maelys_cli_json_writer_init(&data);
   (void)maelys_cli_json_begin_object(&data);
-  (void)maelys_cli_json_key_string(&data, "boundary", boundary_path);
-  (void)maelys_cli_json_key_string(&data, "boundaryDigest", boundary_digest);
-  (void)maelys_cli_json_key_string(&data, "candidate", candidate_path);
-  (void)maelys_cli_json_key_string(&data, "candidateDigest", candidate_digest);
-  (void)maelys_cli_json_key_string(&data, "scope", "host");
-  (void)maelys_cli_json_key_unsigned(&data, "permissionContract",
-                                     MAELYS_SANDBOX_POLICY_PERMISSION_CONTRACT);
-  write_context(&data, context);
+  write_pair_header(&data, context, "boundary", boundary_digest, "candidate",
+                    candidate_digest);
+  write_analysed(&data, 1);
   (void)maelys_cli_json_key_boolean(&data, "contained", found.exceeds == 0u);
   (void)maelys_cli_json_key(&data, "exceeds");
   (void)maelys_cli_json_begin_array(&data);
@@ -908,6 +979,188 @@ static int command_contains(maelys_cli_context_t *context) {
   maelys_sandbox_policy_containment_clear(&found);
   maelys_sandbox_policy_plan_destroy(boundary);
   maelys_sandbox_policy_plan_destroy(candidate);
+  return exit_code;
+}
+
+/* ---- diff (report; with --check, exit 2 when the plans are not equivalent) -- */
+
+static const maelys_cli_operand_t diff_operands[] = {
+    {MAELYS_CLI_OPERAND("BEFORE", "Canonical MIR of the earlier policy.")},
+    {MAELYS_CLI_OPERAND("AFTER", "Canonical MIR of the later policy.")},
+};
+static const maelys_cli_option_t diff_options[] = {
+    HOST_CONTEXT_OPTIONS,
+    {MAELYS_CLI_FLAG("check",
+                     "Exit 2 when the two policies do not grant the same "
+                     "permissions on this host.")},
+};
+
+static void write_change(maelys_cli_json_writer_t *data, const char *key,
+                         const char *before, const char *after) {
+  (void)maelys_cli_json_key(data, key);
+  (void)maelys_cli_json_begin_object(data);
+  (void)maelys_cli_json_key_string(data, "before", before);
+  (void)maelys_cli_json_key_string(data, "after", after);
+  (void)maelys_cli_json_end_object(data);
+}
+
+static const char *root_mode_name(maelys_mir_root_mode_t mode) {
+  return mode == MAELYS_MIR_ROOT_EPHEMERAL_WRITE ? "ephemeral-write"
+                                                 : "read-only";
+}
+
+static int command_diff(maelys_cli_context_t *context) {
+  char before_digest[MAELYS_MIR_DIGEST_HEX_SIZE];
+  char after_digest[MAELYS_MIR_DIGEST_HEX_SIZE];
+  maelys_sandbox_policy_plan_t *before = NULL, *after = NULL;
+  if (resolve_pair(context, before_digest, &before, after_digest, &after))
+    return MAELYS_CLI_EXIT_FAILURE;
+  maelys_sandbox_policy_diff_t *diff = NULL;
+  char *error = NULL;
+  maelys_mir_result_t result =
+      maelys_sandbox_policy_plan_diff(before, after, &diff, &error);
+  if (result != MAELYS_MIR_OK) {
+    maelys_sandbox_policy_plan_destroy(before);
+    maelys_sandbox_policy_plan_destroy(after);
+    return fail_mir(context, result, error, maelys_cli_operand(context, 1u));
+  }
+  unsigned widens = maelys_sandbox_policy_diff_widens(diff);
+  unsigned narrows = maelys_sandbox_policy_diff_narrows(diff);
+  int equivalent = !widens && !narrows;
+
+  maelys_cli_json_writer_t data;
+  maelys_cli_json_writer_init(&data);
+  (void)maelys_cli_json_begin_object(&data);
+  write_pair_header(&data, context, "before", before_digest, "after",
+                    after_digest);
+  write_analysed(&data, 1);
+  (void)maelys_cli_json_key_boolean(&data, "equivalent", equivalent);
+  write_dimensions(&data, "widens", widens);
+  write_dimensions(&data, "narrows", narrows);
+  (void)maelys_cli_json_key(&data, "filesystem");
+  (void)maelys_cli_json_begin_array(&data);
+  for (size_t i = 0; i < maelys_sandbox_policy_diff_path_count(diff); ++i) {
+    maelys_sandbox_policy_diff_path_view_t entry;
+    if (maelys_sandbox_policy_diff_path_at(diff, i, &entry) != MAELYS_MIR_OK)
+      continue;
+    (void)maelys_cli_json_begin_object(&data);
+    (void)maelys_cli_json_key_string(&data, "path", entry.path);
+    write_change(&data, "self",
+                 maelys_sandbox_policy_permission_name(entry.self_before),
+                 maelys_sandbox_policy_permission_name(entry.self_after));
+    write_change(&data, "below",
+                 maelys_sandbox_policy_permission_name(entry.below_before),
+                 maelys_sandbox_policy_permission_name(entry.below_after));
+    (void)maelys_cli_json_end_object(&data);
+  }
+  (void)maelys_cli_json_end_array(&data);
+  (void)maelys_cli_json_key(&data, "network");
+  (void)maelys_cli_json_begin_object(&data);
+  write_change(&data, "mode",
+               network_mode_name(maelys_sandbox_policy_plan_network(before)),
+               network_mode_name(maelys_sandbox_policy_plan_network(after)));
+  (void)maelys_cli_json_key(&data, "added");
+  (void)maelys_cli_json_begin_array(&data);
+  for (size_t i = 0;
+       i < maelys_sandbox_policy_diff_added_destination_count(diff); ++i)
+    write_destination(
+        &data, after, maelys_sandbox_policy_diff_added_destination_at(diff, i));
+  (void)maelys_cli_json_end_array(&data);
+  (void)maelys_cli_json_key(&data, "removed");
+  (void)maelys_cli_json_begin_array(&data);
+  for (size_t i = 0;
+       i < maelys_sandbox_policy_diff_removed_destination_count(diff); ++i)
+    write_destination(
+        &data, before,
+        maelys_sandbox_policy_diff_removed_destination_at(diff, i));
+  (void)maelys_cli_json_end_array(&data);
+  (void)maelys_cli_json_end_object(&data);
+  write_change(&data, "root",
+               root_mode_name(maelys_sandbox_policy_plan_root_mode(before)),
+               root_mode_name(maelys_sandbox_policy_plan_root_mode(after)));
+  write_change(
+      &data, "process",
+      maelys_sandbox_policy_plan_process_tree_required(before) ? "required"
+                                                               : "disabled",
+      maelys_sandbox_policy_plan_process_tree_required(after) ? "required"
+                                                              : "disabled");
+  (void)maelys_cli_json_end_object(&data);
+  int exit_code = maelys_cli_succeed_writer(
+      context, &data, NULL,
+      maelys_cli_flag(context, "check") && !equivalent
+          ? MAELYS_CLI_EXIT_VIOLATIONS
+          : MAELYS_CLI_EXIT_OK);
+  maelys_sandbox_policy_diff_destroy(diff);
+  maelys_sandbox_policy_plan_destroy(before);
+  maelys_sandbox_policy_plan_destroy(after);
+  return exit_code;
+}
+
+/* ---- overlaps (is there an access both policies grant?) -------------------- */
+
+static const maelys_cli_operand_t overlaps_operands[] = {
+    {MAELYS_CLI_OPERAND("FIRST", "Canonical MIR of one policy.")},
+    {MAELYS_CLI_OPERAND("SECOND", "Canonical MIR of the other policy.")},
+};
+
+static int command_overlaps(maelys_cli_context_t *context) {
+  char first_digest[MAELYS_MIR_DIGEST_HEX_SIZE];
+  char second_digest[MAELYS_MIR_DIGEST_HEX_SIZE];
+  maelys_sandbox_policy_plan_t *first = NULL, *second = NULL;
+  if (resolve_pair(context, first_digest, &first, second_digest, &second))
+    return MAELYS_CLI_EXIT_FAILURE;
+  maelys_sandbox_policy_overlap_t overlap;
+  char *error = NULL;
+  maelys_mir_result_t result =
+      maelys_sandbox_policy_plan_overlaps(first, second, &overlap, &error);
+  if (result != MAELYS_MIR_OK) {
+    maelys_sandbox_policy_plan_destroy(first);
+    maelys_sandbox_policy_plan_destroy(second);
+    return fail_mir(context, result, error, maelys_cli_operand(context, 1u));
+  }
+  int network =
+      (overlap.dimensions & MAELYS_SANDBOX_POLICY_DIMENSION_NETWORK) != 0u;
+  maelys_cli_json_writer_t data;
+  maelys_cli_json_writer_init(&data);
+  (void)maelys_cli_json_begin_object(&data);
+  write_pair_header(&data, context, "first", first_digest, "second",
+                    second_digest);
+  write_analysed(&data, 0);
+  (void)maelys_cli_json_key_boolean(&data, "overlaps", overlap.dimensions != 0u);
+  (void)maelys_cli_json_key(&data, "filesystem");
+  (void)maelys_cli_json_begin_object(&data);
+  if (overlap.read_path)
+    (void)maelys_cli_json_key_string(&data, "readablePath", overlap.read_path);
+  if (overlap.write_path)
+    (void)maelys_cli_json_key_string(&data, "writablePath", overlap.write_path);
+  (void)maelys_cli_json_end_object(&data);
+  (void)maelys_cli_json_key(&data, "network");
+  (void)maelys_cli_json_begin_object(&data);
+  (void)maelys_cli_json_key_boolean(&data, "overlaps", network);
+  if (overlap.first_destination != SIZE_MAX) {
+    (void)maelys_cli_json_key(&data, "firstDestination");
+    write_destination(&data, first, overlap.first_destination);
+  }
+  if (overlap.second_destination != SIZE_MAX) {
+    (void)maelys_cli_json_key(&data, "secondDestination");
+    write_destination(&data, second, overlap.second_destination);
+  }
+  (void)maelys_cli_json_end_object(&data);
+  (void)maelys_cli_json_end_object(&data);
+  char human[9000];
+  if (!overlap.dimensions)
+    (void)snprintf(human, sizeof(human), "no common access");
+  else
+    (void)snprintf(human, sizeof(human),
+                   "common access: readable %s; writable %s; network %s",
+                   overlap.read_path ? overlap.read_path : "none",
+                   overlap.write_path ? overlap.write_path : "none",
+                   network ? "yes" : "no");
+  int exit_code =
+      maelys_cli_succeed_writer(context, &data, human, MAELYS_CLI_EXIT_OK);
+  maelys_sandbox_policy_overlap_clear(&overlap);
+  maelys_sandbox_policy_plan_destroy(first);
+  maelys_sandbox_policy_plan_destroy(second);
   return exit_code;
 }
 
@@ -1081,6 +1334,19 @@ static const maelys_cli_command_t commands[] = {
                      command_contains),
      MAELYS_CLI_OPERANDS(contains_operands), MAELYS_CLI_OPTIONS(contains_options),
      MAELYS_CLI_SCHEMA(policy_contains_schema)},
+    {MAELYS_CLI_READ("diff", "diff",
+                     "Report what changes between two policies resolved on "
+                     "this host; with --check, exit 2 unless they grant the "
+                     "same permissions.",
+                     command_diff),
+     MAELYS_CLI_OPERANDS(diff_operands), MAELYS_CLI_OPTIONS(diff_options),
+     MAELYS_CLI_SCHEMA(policy_diff_schema)},
+    {MAELYS_CLI_READ("overlaps", "overlaps",
+                     "Tell whether two policies resolved on this host grant "
+                     "a common access, with a witness.",
+                     command_overlaps),
+     MAELYS_CLI_OPERANDS(overlaps_operands), MAELYS_CLI_OPTIONS(contains_options),
+     MAELYS_CLI_SCHEMA(policy_overlaps_schema)},
     {MAELYS_CLI_READ("validate", "validate",
                      "Check that a file is canonical MIR; exit 2 when it is not.",
                      command_validate),

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- add `maelys_sandbox_policy_plan_diff()` with `maelys-policy diff BEFORE
+  AFTER [--check]`, and `maelys_sandbox_policy_plan_overlaps()` with
+  `maelys-policy overlaps FIRST SECOND`. A diff lists the paths where what is
+  granted changes, the destinations added and removed and the execution
+  constraints; two policies are equivalent when it neither widens nor narrows
+  anything, and `--check` exits 2 otherwise. An overlap names a path both
+  policies let read, one both let write and a connection both allow. Every
+  comparison report lists the dimensions it analysed;
+
 ## 0.7.0 — 2026-10-01
 
 Additive: the MIR format, existing digests and the SandboxPlan ABI (5) are

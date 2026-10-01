@@ -168,19 +168,55 @@ can check:
 - the filesystem has **not changed** since, for either resolution;
 - the backend **enforces the plans** as the contract states.
 
-The other dimensions are compared by their own order:
+Network access is the other permission, compared by its own order:
 
-| Dimension | The candidate is within the boundary when |
+| Network | The candidate is within the boundary when |
 |---|---|
-| network mode | it is no broader: `none` < `mediated` < `direct` |
+| mode | it is no broader: `none` < `mediated` < `direct` |
 | mediated destinations | each is one of the boundary's, requires TLS SNI where the boundary does, and allows private addresses only where the boundary does; a `direct` boundary allows every destination |
+
+### Execution constraints
+
+Root mode and process-tree confinement grant no access to anything: they
+constrain how the execution runs. They are compared under a contract of
+their own, and never as a permission on a path:
+
+| Constraint | The candidate is within the boundary when |
+|---|---|
 | root | it is `read-only`, or the boundary is `ephemeral-write` |
 | process | it requires tree confinement, or the boundary does not |
 
 Each dimension that exceeds is reported with one witness; the filesystem
-witness is the first in component order of paths. Capabilities and the
-`missing` requirement of rules are not compared: they say what a backend
-must offer, not what a policy grants.
+witness is the first in component order of paths. A report lists the
+dimensions it analysed, and a verdict covers nothing else. Capabilities and
+the `missing` requirement of rules are not compared: they say what a
+backend must offer, not what a policy grants. Every comparison either
+completes or fails: there is no partial or inconclusive answer that could
+be read as "contained".
+
+## Difference, equivalence and overlap
+
+These read the same regions as containment and hold under the same three
+conditions.
+
+`maelys_sandbox_policy_plan_diff(before, after)` reports what changes. Two
+plans are **equivalent** exactly when the diff neither widens nor narrows
+any dimension, whatever their rules: equivalence is about what is granted,
+not about bytes, and two equivalent policies usually have different digests.
+
+For the filesystem, the diff is a list of paths, each with what both plans
+grant on the path itself (`self`) and under it (`below`). An entry
+overrides, for its path and beneath, the entries of the paths above it.
+Equal `below` permissions say only that nothing changes there; an entry
+whose permissions are all equal is an unchanged exception inside a changed
+tree. A path under no entry is unchanged. A path that both plans treat
+alike under an unchanged tree is not listed.
+
+`maelys_sandbox_policy_plan_overlaps(first, second)` tells whether some
+access is granted by both: a path both let read, a path both let write, or
+a connection both allow, each with a witness. Execution constraints are not
+accesses and have no overlap. An overlap witness is, like a containment
+witness, a path of the model.
 
 ## Conformance
 
