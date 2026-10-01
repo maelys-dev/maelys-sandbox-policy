@@ -16,6 +16,10 @@
 - add the reference evaluator `maelys_sandbox_policy_plan_evaluate()` and the
   versioned corpus `corpus/permissions`, installed under
   `share/maelys-sandbox-policy/corpus`, for consumers to prove conformance;
+- corpus version 3: every path a rule or a query names declares what it is
+  on the host (`node file|directory|absent`), so that consumers build one
+  tree and guess nothing; `exact` is shown on a directory (cases 04, 06, 22)
+  and on a file (new cases 26, 27);
 - **breaking:** a `deny` with `missing: skip` on an absent path is no longer
   dropped from the plan. It is kept with `missing = protect-create` on the
   resolved rule, named by its canonical existing prefix and literal remaining

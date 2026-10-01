@@ -1,6 +1,10 @@
 # A deny removes a subtree from a broader grant.
 rule read tree /workspace
 rule deny tree /workspace/.git
+node directory /workspace
+node directory /workspace/.git
+node file /workspace/.git/config
+node file /workspace/src/main.c
 query /workspace/src/main.c read read-rule
 query /workspace/.git none deny-rule
 query /workspace/.git/config none deny-rule

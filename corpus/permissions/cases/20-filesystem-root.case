@@ -1,6 +1,10 @@
 # The tree of "/" holds every path.
 rule read tree /
 rule deny tree /private
+node directory /
+node directory /private
+node file /private/key
+node file /usr/bin/env
 query / read read-rule
 query /usr/bin/env read read-rule
 query /private/key none deny-rule

@@ -3,6 +3,11 @@
 rule write tree /workspace
 rule deny exact /workspace/.env protect-create
 rule deny tree /workspace/secrets/prod protect-create
+node directory /workspace
+node absent /workspace/.env
+node file /workspace/secrets/dev/key
+node absent /workspace/secrets/prod
+node absent /workspace/secrets/prod/key
 query /workspace/.env none deny-rule
 query /workspace/secrets/prod/key none deny-rule
 query /workspace/secrets/dev/key read-write write-rule

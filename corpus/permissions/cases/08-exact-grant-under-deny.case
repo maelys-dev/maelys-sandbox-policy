@@ -1,5 +1,7 @@
 # An exact grant under a denied tree is denied too.
 rule deny tree /workspace/private
 rule read exact /workspace/private/key
+node directory /workspace/private
+node file /workspace/private/key
 query /workspace/private/key none deny-rule
 compile refused before=read after=none

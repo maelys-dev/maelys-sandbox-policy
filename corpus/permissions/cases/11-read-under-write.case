@@ -3,6 +3,10 @@
 # refuses it. A read-only subtree of a writable tree is not expressible.
 rule write tree /workspace
 rule read tree /workspace/vendor
+node directory /workspace
+node file /workspace/src
+node directory /workspace/vendor
+node file /workspace/vendor/lib.c
 query /workspace/vendor read-write write-rule
 query /workspace/vendor/lib.c read-write write-rule
 query /workspace/src read-write write-rule

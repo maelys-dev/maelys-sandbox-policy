@@ -1,6 +1,11 @@
 # /w/a and /w/ab are unrelated: a prefix of characters is not an ancestor.
 rule deny tree /w/a
 rule read tree /w/ab
+node directory /w/a
+node file /w/a/file
+node directory /w/ab
+node file /w/ab/file
+node file /w/abc
 query /w/ab/file read read-rule
 query /w/a/file none deny-rule
 query /w/abc none default-deny

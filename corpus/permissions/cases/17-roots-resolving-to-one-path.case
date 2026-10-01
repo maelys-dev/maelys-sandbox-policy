@@ -2,6 +2,9 @@
 rule read tree /srv/shared
 rule write tree /srv/shared
 rule deny exact /srv/shared/lock
+node directory /srv/shared
+node file /srv/shared/data
+node file /srv/shared/lock
 query /srv/shared/data read-write write-rule
 query /srv/shared/lock none deny-rule
 compile accepted

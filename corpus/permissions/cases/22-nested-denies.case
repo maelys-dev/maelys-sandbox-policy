@@ -1,8 +1,15 @@
-# Overlapping denies of both scopes inside one grant.
+# Overlapping denies of both scopes inside one grant: an exact deny on a
+# file (/w/a/b) and one on a directory (/w/c), whose entry keeps the grant.
 rule write tree /w
 rule deny tree /w/a
 rule deny exact /w/a/b
 rule deny exact /w/c
+node directory /w
+node directory /w/a
+node file /w/a/b
+node file /w/a/z
+node directory /w/c
+node file /w/c/d
 query /w/a/b none deny-rule
 query /w/a/z none deny-rule
 query /w/c none deny-rule

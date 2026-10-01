@@ -2,6 +2,9 @@
 # contract 1 read this as "public is readable", so compilation refuses it.
 rule deny tree /workspace/private
 rule read tree /workspace/private/public
+node directory /workspace/private
+node directory /workspace/private/public
+node file /workspace/private/public/a.txt
 query /workspace/private none deny-rule
 query /workspace/private/public none deny-rule
 query /workspace/private/public/a.txt none deny-rule

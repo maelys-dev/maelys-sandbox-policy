@@ -1,4 +1,6 @@
 # Nothing is granted without a rule.
+node directory /
+node file /etc/passwd
 query / none default-deny
 query /etc/passwd none default-deny
 compile accepted

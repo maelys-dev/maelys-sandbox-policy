@@ -2,6 +2,10 @@
 # inside the workspace. Additive grants agree under both contracts.
 rule read tree /srv/workspace
 rule write tree /srv/workspace/tmp
+node directory /srv/workspace
+node file /srv/workspace/src
+node directory /srv/workspace/tmp
+node file /srv/workspace/tmp/scratch
 query /srv/workspace/tmp/scratch read-write write-rule
 query /srv/workspace/src read read-rule
 compile accepted

@@ -1,0 +1,11 @@
+# An exact deny on a file removes that file from a broader grant.
+rule write tree /workspace
+rule deny exact /workspace/.env
+node directory /workspace
+node file /workspace/.env
+node file /workspace/.env.example
+node file /workspace/src/main.c
+query /workspace/.env none deny-rule
+query /workspace/.env.example read-write write-rule
+query /workspace/src/main.c read-write write-rule
+compile accepted

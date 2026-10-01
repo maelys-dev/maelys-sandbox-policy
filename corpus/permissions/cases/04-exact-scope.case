@@ -1,5 +1,11 @@
-# An exact rule covers one path and nothing under it.
+# An exact rule covers one path and nothing under it. The target is a
+# directory here: the rule grants the directory itself and none of its
+# entries. A backend that cannot confine a rule to one directory node refuses
+# the plan; case 26 is the same rule on a file.
 rule read exact /workspace/README
+node directory /workspace
+node directory /workspace/README
+node file /workspace/README/child
 query /workspace/README read read-rule
 query /workspace/README/child none default-deny
 query /workspace none default-deny

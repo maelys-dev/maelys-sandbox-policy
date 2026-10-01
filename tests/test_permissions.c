@@ -27,6 +27,29 @@ static int failures;
 
 #define MAX_RULES 16u
 #define MAX_QUERIES 16u
+#define MAX_NODES 48u
+
+typedef enum node_type { NODE_FILE = 1, NODE_DIRECTORY, NODE_ABSENT } node_type_t;
+
+typedef struct node {
+  char path[256];
+  node_type_t type;
+} node_t;
+
+static int is_ancestor(const char *ancestor, const char *path) {
+  size_t n = strlen(ancestor);
+  if (strcmp(ancestor, path) == 0)
+    return 0;
+  return n == 1u || (strncmp(ancestor, path, n) == 0 && path[n] == '/');
+}
+
+static const node_t *find_node(const node_t *nodes, size_t count,
+                               const char *path) {
+  for (size_t i = 0; i < count; ++i)
+    if (strcmp(nodes[i].path, path) == 0)
+      return &nodes[i];
+  return NULL;
+}
 
 typedef struct query {
   char path[256];
@@ -92,6 +115,8 @@ static void run_case(const char *file) {
   plan->rule_capacity = MAX_RULES;
   static query_t queries[MAX_QUERIES];
   size_t query_count = 0;
+  static node_t nodes[MAX_NODES];
+  size_t node_count = 0;
   int compile_seen = 0, refused = 0, requires_protection = 0;
   maelys_sandbox_policy_permission_t before = 0, after = 0;
   char line[512];
@@ -128,6 +153,19 @@ static void run_case(const char *file) {
       (void)snprintf(queries[query_count].path,
                      sizeof(queries[query_count].path), "%s", c);
       ++query_count;
+    } else if (sscanf(line, "node %63s %255s", a, c) == 2) {
+      node_type_t type = strcmp(a, "file") == 0        ? NODE_FILE
+                         : strcmp(a, "directory") == 0 ? NODE_DIRECTORY
+                         : strcmp(a, "absent") == 0    ? NODE_ABSENT
+                                                       : 0;
+      if (!type || node_count == MAX_NODES || !maelys_plan_path_is_canonical(c) ||
+          find_node(nodes, node_count, c)) {
+        FAIL_CASE("invalid or repeated node");
+        continue;
+      }
+      (void)snprintf(nodes[node_count].path, sizeof(nodes[node_count].path),
+                     "%s", c);
+      nodes[node_count++].type = type;
     } else if (sscanf(line, "compile refused before=%63s after=%63s", a, d) ==
                2) {
       compile_seen = refused = 1;
@@ -149,6 +187,33 @@ static void run_case(const char *file) {
   line_number = 0;
   if (!compile_seen || query_count == 0)
     FAIL_CASE("a case needs queries and one compile line");
+
+  /* Every path a rule or a query names says what it is on the host, and the
+   * declarations describe one possible tree. */
+  for (size_t i = 0; i < plan->rule_count; ++i) {
+    const node_t *node = find_node(nodes, node_count, plan->rules[i].path);
+    int protect = plan->rules[i].missing ==
+                  MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE;
+    if (!node)
+      FAIL_CASE("no node line for the rule path %s", plan->rules[i].path);
+    else if (protect != (node->type == NODE_ABSENT))
+      FAIL_CASE("%s: a rule target is absent exactly when it is protect-create",
+                node->path);
+  }
+  for (size_t i = 0; i < query_count; ++i)
+    if (!find_node(nodes, node_count, queries[i].path))
+      FAIL_CASE("no node line for the query path %s", queries[i].path);
+  for (size_t i = 0; i < node_count; ++i) {
+    for (size_t j = 0; j < node_count; ++j) {
+      if (!is_ancestor(nodes[i].path, nodes[j].path))
+        continue;
+      if (nodes[i].type == NODE_FILE)
+        FAIL_CASE("%s lies beneath the file %s", nodes[j].path, nodes[i].path);
+      if (nodes[i].type == NODE_ABSENT && nodes[j].type != NODE_ABSENT)
+        FAIL_CASE("%s exists beneath the absent %s", nodes[j].path,
+                  nodes[i].path);
+    }
+  }
 
   /* A plan requires the protection exactly when a rule carries it. */
   int carries_protection = 0;
