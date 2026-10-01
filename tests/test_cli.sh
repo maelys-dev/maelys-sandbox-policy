@@ -423,3 +423,5 @@ test "$status" = 1 || fail 'diff with a policy that does not resolve'
 grep -q '"code":"POLICY_FAILED"' "$tmp_dir/diff-conflict.json" || fail 'diff conflict code'
 grep -q '"analysed":\["filesystem","network","root","process"\]' "$tmp_dir/contains-child.json" ||
   fail 'contains scope'
+both_invalid diff "$tmp_dir/no-such.mir" "$tmp_dir/also-missing.mir"
+both_invalid overlaps "$tmp_dir/no-such.mir" "$tmp_dir/also-missing.mir"
