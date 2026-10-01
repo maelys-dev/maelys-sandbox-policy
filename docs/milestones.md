@@ -29,10 +29,13 @@
   canonicalized separately from the MIR. Symlink escapes are rejected.
 - **S2 — Capability support:** every requested primitive is mapped to an
   explicit backend capability and unsupported plans fail closed.
-- **S3 — SandboxPlan:** symbolic MIR paths become absolute rules. The stable
-  plan order is broad-to-specific, with exact rules after tree rules and
-  `deny` after grants at equal specificity, so last-match backends can retain
-  the normative precedence. The source MIR digest is carried into the plan.
+- **S3 — SandboxPlan:** symbolic MIR paths become absolute rules, in a stable
+  order. The source MIR digest is carried into the plan.
+- **S4 — Permission contract:** a deny is absolute and grants are additive,
+  whatever the rule order; plans list grants, then denies. A reference
+  evaluator and a shared corpus make the contract testable by consumers. A
+  policy that the earlier most-specific-wins order read differently is
+  refused instead of reinterpreted.
 
 Backends and process launch do not belong to this repository. Maelys Warden
 consumes `SandboxPlan` through an adapter and owns Seatbelt/Bubblewrap

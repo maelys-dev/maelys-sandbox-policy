@@ -1,0 +1,7 @@
+# Two symbolic roots may overlap once resolved, here a temp directory
+# inside the workspace. Additive grants agree under both contracts.
+rule read tree /srv/workspace
+rule write tree /srv/workspace/tmp
+query /srv/workspace/tmp/scratch read-write write-rule
+query /srv/workspace/src read read-rule
+compile accepted

@@ -72,6 +72,30 @@ struct maelys_sandbox_policy_plan {
   char digest[MAELYS_MIR_DIGEST_HEX_SIZE];
 };
 
+/* Where the most-specific-wins order of ABI 4 and the permission contract
+ * disagree: one path, what each grants there and the rule deciding each. */
+typedef struct maelys_plan_conflict {
+  char *witness;
+  maelys_sandbox_policy_permission_t before;
+  maelys_sandbox_policy_permission_t after;
+  size_t legacy_rule;
+  size_t contract_rule;
+} maelys_plan_conflict_t;
+
+int maelys_plan_path_is_canonical(const char *path);
+int maelys_plan_rule_applies(const maelys_sandbox_policy_resolved_rule_t *rule,
+                             const char *path);
+void maelys_plan_evaluate(const maelys_sandbox_policy_resolved_rule_t *rules,
+                          size_t count, const char *path,
+                          maelys_sandbox_policy_evaluation_t *out);
+maelys_mir_result_t
+maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
+                          size_t count, maelys_plan_conflict_t *out);
+/* Refuses a precedence conflict, then puts the rules in plan order. */
+maelys_mir_result_t
+maelys_sandbox_policy_plan_finalize(maelys_sandbox_policy_plan_t *plan,
+                                    char **out_error);
+
 void maelys_set_error(char **out_error, const char *format, ...);
 char *maelys_strdup(const char *value);
 int maelys_valid_utf8_no_nul(const uint8_t *bytes, size_t size);

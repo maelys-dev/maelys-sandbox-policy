@@ -37,6 +37,11 @@ Filesystem records are sorted by `(root, path, scope, missing, access)`. For an
 identical target, `deny > write > read`. Filesystem access is deny-default and
 write implies read.
 
+What the records of a policy grant together is defined by the
+[permission contract](permission-contract.md): a deny is absolute, grants are
+additive, and the root mode grants nothing. This format only fixes their
+bytes.
+
 ## Network destination record
 
 Every network record has an 8-byte prefix followed by `host_length` ASCII bytes.

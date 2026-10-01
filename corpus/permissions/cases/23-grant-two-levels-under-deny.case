@@ -1,0 +1,7 @@
+# Depth changes nothing: any grant under a denied tree is denied.
+rule read tree /w
+rule deny tree /w/a
+rule write tree /w/a/b/c
+query /w/a/b/c/file none deny-rule
+query /w/file read read-rule
+compile refused before=read-write after=none

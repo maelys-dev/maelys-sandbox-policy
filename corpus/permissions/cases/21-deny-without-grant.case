@@ -1,0 +1,5 @@
+# A deny that no grant overlaps is reported as the reason, not the default.
+rule deny tree /workspace/secret
+query /workspace/secret/a none deny-rule
+query /workspace/other none default-deny
+compile accepted

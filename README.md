@@ -78,7 +78,9 @@ See [portable tooling](docs/portable-tooling.md) and the
 [identity decision record](docs/adr-0001-mir-v3-identity.md).
 
 See the [architecture](docs/architecture.md),
-[C API contract](docs/api-contract.md), [milestones](docs/milestones.md), the
+[C API contract](docs/api-contract.md), the normative
+[permission contract](docs/permission-contract.md) and its
+[corpus](corpus/permissions/README.md), [milestones](docs/milestones.md), the
 normative [MIR v3 format](docs/mir-format-v3.md), and the published
 [source schema](schemas/mir-source-v3.schema.json). The external architectural
 influences are recorded in [design references](docs/references.md).

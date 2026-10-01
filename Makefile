@@ -33,7 +33,7 @@ CLI_SCHEMA_SYMBOLS := $(foreach schema,$(CLI_SCHEMAS),\
 	policy_$(subst -,_,$(basename $(notdir $(schema))))_schema=$(schema))
 
 MIR_SRC := src/common.c src/sha256.c src/mir.c src/source_json.c src/inspect_json.c
-POLICY_SRC := src/sandbox_policy.c
+POLICY_SRC := src/sandbox_policy.c src/permissions.c
 MIR_OBJ := $(MIR_SRC:%.c=$(BUILD)/%.o)
 POLICY_OBJ := $(POLICY_SRC:%.c=$(BUILD)/%.o)
 
@@ -109,13 +109,18 @@ $(BUILD)/tests/test_sandbox_policy: $(BUILD)/tests/test_sandbox_policy.o $(BUILD
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $^ -o $@
 
+$(BUILD)/tests/test_permissions: $(BUILD)/tests/test_permissions.o $(BUILD)/lib/libmaelys-sandbox-policy.a $(BUILD)/lib/libmaelys-mir.a
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $^ -o $@
+
 $(BUILD)/tests/test_sha256: $(BUILD)/tests/test_sha256.o $(BUILD)/src/sha256.o $(BUILD)/src/common.o
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $^ -o $@
 
-check: all $(BUILD)/tests/test_mir $(BUILD)/tests/test_sandbox_policy $(BUILD)/tests/test_sha256
+check: all $(BUILD)/tests/test_mir $(BUILD)/tests/test_sandbox_policy $(BUILD)/tests/test_permissions $(BUILD)/tests/test_sha256
 	$(BUILD)/tests/test_mir
 	$(BUILD)/tests/test_sandbox_policy
+	$(BUILD)/tests/test_permissions corpus/permissions/cases
 	$(BUILD)/tests/test_sha256
 	sh tests/test_cli.sh $(BUILD)/bin/maelys-policy
 	sh tests/test_vectors.sh $(BUILD)/bin/maelys-policy
@@ -187,6 +192,11 @@ install: all $(BUILD)/pkgconfig/maelys-mir.pc $(BUILD)/pkgconfig/maelys-sandbox-
 		$(DESTDIR)$(PREFIX)/share/doc/maelys-sandbox-policy/
 	install -m 0644 schemas/mir-source-v3.schema.json \
 		$(DESTDIR)$(PREFIX)/share/maelys-sandbox-policy/schemas/
+	install -d $(DESTDIR)$(PREFIX)/share/maelys-sandbox-policy/corpus/permissions/cases
+	install -m 0644 corpus/permissions/README.md corpus/permissions/VERSION \
+		$(DESTDIR)$(PREFIX)/share/maelys-sandbox-policy/corpus/permissions/
+	install -m 0644 corpus/permissions/cases/*.case \
+		$(DESTDIR)$(PREFIX)/share/maelys-sandbox-policy/corpus/permissions/cases/
 
 clean:
 	rm -rf $(BUILD)

@@ -1,0 +1,8 @@
+# A more specific grant does not reopen a denied tree. The order of
+# contract 1 read this as "public is readable", so compilation refuses it.
+rule deny tree /workspace/private
+rule read tree /workspace/private/public
+query /workspace/private none deny-rule
+query /workspace/private/public none deny-rule
+query /workspace/private/public/a.txt none deny-rule
+compile refused before=read after=none

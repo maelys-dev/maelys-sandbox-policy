@@ -1,0 +1,7 @@
+# Rules of different roots that resolve to the same path combine.
+rule read tree /srv/shared
+rule write tree /srv/shared
+rule deny exact /srv/shared/lock
+query /srv/shared/data read-write write-rule
+query /srv/shared/lock none deny-rule
+compile accepted

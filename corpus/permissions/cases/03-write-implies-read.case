@@ -1,0 +1,6 @@
+# Write grants read and write.
+rule write tree /workspace/build
+query /workspace/build read-write write-rule
+query /workspace/build/out/a.o read-write write-rule
+query /workspace none default-deny
+compile accepted

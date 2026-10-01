@@ -1,0 +1,6 @@
+# Grants are additive: a narrower write widens a broader read.
+rule read tree /workspace
+rule write tree /workspace/build
+query /workspace/build/a.o read-write write-rule
+query /workspace/src/main.c read read-rule
+compile accepted

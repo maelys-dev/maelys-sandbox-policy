@@ -30,7 +30,9 @@ typedef enum maelys_mir_result {
   MAELYS_MIR_ERR_NON_CANONICAL = 5,
   MAELYS_MIR_ERR_IO = 6,
   MAELYS_MIR_ERR_UNSUPPORTED = 7,
-  MAELYS_MIR_ERR_MISSING = 8
+  MAELYS_MIR_ERR_MISSING = 8,
+  /* The request is well formed but its parts contradict each other. */
+  MAELYS_MIR_ERR_CONFLICT = 9
 } maelys_mir_result_t;
 
 typedef enum maelys_mir_fs_access {

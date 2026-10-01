@@ -1,0 +1,7 @@
+# An exact deny removes one path; what lies under it keeps the grant.
+rule write tree /workspace
+rule deny exact /workspace/secret
+query /workspace/secret none deny-rule
+query /workspace/secret/child read-write write-rule
+query /workspace/other read-write write-rule
+compile accepted

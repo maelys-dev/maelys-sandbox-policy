@@ -27,6 +27,8 @@ const char *maelys_mir_result_name(maelys_mir_result_t result) {
     return "unsupported";
   case MAELYS_MIR_ERR_MISSING:
     return "missing";
+  case MAELYS_MIR_ERR_CONFLICT:
+    return "conflict";
   }
   return "unknown";
 }

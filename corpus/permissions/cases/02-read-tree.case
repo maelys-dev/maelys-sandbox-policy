@@ -1,0 +1,7 @@
+# A tree rule covers its path and everything under it, on segment boundaries.
+rule read tree /workspace
+query /workspace read read-rule
+query /workspace/src/main.c read read-rule
+query /workspace2 none default-deny
+query /work none default-deny
+compile accepted
