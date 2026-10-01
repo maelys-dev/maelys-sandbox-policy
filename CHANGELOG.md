@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- fix the cost of the precedence-conflict search of
+  `maelys_sandbox_policy_compile`, which grew with the square of the resolved
+  rule count: 0.4 to 3.6 s at 4 096 rules and, by extrapolation, more than
+  half an hour for the 262 144 rules a MIR can resolve to under 64
+  minimal-runtime roots. It now sorts paths by component and keeps the stack
+  of the paths above, in N log N comparisons: under a second at that maximum.
+  Accepted and refused policies, witnesses and diagnostics are unchanged; the
+  earlier search is kept as the definition the new one is tested against;
+- document the resource bounds of compilation in `docs/api-contract.md` and
+  add `make bench`, which measures them. No limit is added or lowered.
+
 ## 0.6.0 — 2026-10-01
 
 This release fixes what the filesystem rules of a policy grant. MIR bytes

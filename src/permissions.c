@@ -177,10 +177,14 @@ static int conflict_at(const maelys_sandbox_policy_resolved_rule_t *rules,
  * are the exact rules naming it and the tree rules at or above it. Checking
  * every rule path and one unnamed descendant of each therefore visits every
  * region, so a difference between the two precedences cannot be missed.
+ *
+ * This is the definition, kept as written: every region is evaluated against
+ * every rule, which costs the square of the rule count. The search below
+ * must agree with it on every input; tests hold the two together.
  */
-maelys_mir_result_t
-maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
-                          size_t count, maelys_plan_conflict_t *out) {
+maelys_mir_result_t maelys_plan_find_conflict_reference(
+    const maelys_sandbox_policy_resolved_rule_t *rules, size_t count,
+    maelys_plan_conflict_t *out) {
   memset(out, 0, sizeof(*out));
   for (size_t i = 0; i < count; ++i) {
     if (conflict_at(rules, count, rules[i].path, out)) {
@@ -197,6 +201,171 @@ maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
     free(inside);
   }
   return MAELYS_MIR_OK;
+}
+
+/* ---- the same search, in sorted order ---------------------------------------
+ *
+ * Paths are put in component order, in which '/' sorts before every other
+ * byte: a path is then followed at once by everything under it, where byte
+ * order would let "/a-" slip between "/a" and "/a/b". One pass over that
+ * order keeps the stack of the paths above the current one, each carrying
+ * what its tree rules and those above it grant. The two regions of a path,
+ * itself and an unnamed descendant, are then decided from the stack top
+ * without reading any other rule.
+ */
+
+static int component_order(const char *a, const char *b) {
+  for (;; ++a, ++b) {
+    unsigned char x = (unsigned char)*a, y = (unsigned char)*b;
+    if (x == y) {
+      if (!x)
+        return 0;
+      continue;
+    }
+    /* end of string, then '/', then every other byte by value */
+    unsigned rank_x = !x ? 0u : x == '/' ? 1u : (unsigned)x + 2u;
+    unsigned rank_y = !y ? 0u : y == '/' ? 1u : (unsigned)y + 2u;
+    return rank_x < rank_y ? -1 : 1;
+  }
+}
+
+/* A rule by its place in the caller's array. The comparison reads nothing
+ * else, so concurrent searches share no state. */
+typedef struct ordered_rule {
+  const char *path;
+  size_t index;
+} ordered_rule_t;
+
+static int by_component_order(const void *left, const void *right) {
+  const ordered_rule_t *a = left, *b = right;
+  int order = component_order(a->path, b->path);
+  if (order)
+    return order;
+  return a->index < b->index ? -1 : a->index > b->index;
+}
+
+static int strictly_above(const char *ancestor, const char *path) {
+  size_t n = strlen(ancestor);
+  if (n == 1u)
+    return path[1] != '\0';
+  return strncmp(ancestor, path, n) == 0 && path[n] == '/';
+}
+
+/* What the tree rules of a path and of every path above it grant. */
+typedef struct tree_state {
+  const char *path;
+  unsigned accesses;        /* bit per access among those tree rules */
+  unsigned nearest;         /* strongest access of the deepest tree rules */
+} tree_state_t;
+
+static unsigned access_bit(maelys_mir_fs_access_t access) {
+  return 1u << (unsigned)access;
+}
+
+static maelys_sandbox_policy_permission_t contract_permission(unsigned accesses) {
+  if (accesses & access_bit(MAELYS_MIR_FS_DENY))
+    return MAELYS_SANDBOX_POLICY_PERMISSION_NONE;
+  if (accesses & access_bit(MAELYS_MIR_FS_WRITE))
+    return MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE;
+  if (accesses & access_bit(MAELYS_MIR_FS_READ))
+    return MAELYS_SANDBOX_POLICY_PERMISSION_READ;
+  return MAELYS_SANDBOX_POLICY_PERMISSION_NONE;
+}
+
+static maelys_sandbox_policy_permission_t legacy_permission(unsigned strongest) {
+  return strongest ? permission_of((maelys_mir_fs_access_t)strongest)
+                   : MAELYS_SANDBOX_POLICY_PERMISSION_NONE;
+}
+
+enum { CONFLICT_AT_PATH = 1, CONFLICT_BELOW = 2 };
+
+maelys_mir_result_t
+maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
+                          size_t count, maelys_plan_conflict_t *out) {
+  memset(out, 0, sizeof(*out));
+  if (count == 0u)
+    return MAELYS_MIR_OK;
+  ordered_rule_t *order = malloc(count * sizeof(*order));
+  unsigned char *conflicts = calloc(count, 1u);
+  tree_state_t *stack = malloc(count * sizeof(*stack));
+  if (!order || !conflicts || !stack) {
+    free(order);
+    free(conflicts);
+    free(stack);
+    return MAELYS_MIR_ERR_MEMORY;
+  }
+  for (size_t i = 0; i < count; ++i)
+    order[i] = (ordered_rule_t){rules[i].path, i};
+  qsort(order, count, sizeof(*order), by_component_order);
+
+  size_t depth = 0;
+  int any = 0;
+  for (size_t first = 0, next; first < count; first = next) {
+    const char *path = order[first].path;
+    unsigned exact = 0u, tree = 0u, strongest_exact = 0u, strongest_tree = 0u;
+    for (next = first; next < count && strcmp(order[next].path, path) == 0;
+         ++next) {
+      const maelys_sandbox_policy_resolved_rule_t *rule =
+          &rules[order[next].index];
+      unsigned access = (unsigned)rule->access;
+      if (rule->scope == MAELYS_MIR_SCOPE_TREE) {
+        tree |= access_bit(rule->access);
+        if (access > strongest_tree)
+          strongest_tree = access;
+      } else {
+        exact |= access_bit(rule->access);
+        if (access > strongest_exact)
+          strongest_exact = access;
+      }
+    }
+    while (depth && !strictly_above(stack[depth - 1u].path, path))
+      --depth;
+    unsigned above = depth ? stack[depth - 1u].accesses : 0u;
+    unsigned nearest_above = depth ? stack[depth - 1u].nearest : 0u;
+    unsigned nearest = strongest_tree ? strongest_tree : nearest_above;
+
+    unsigned at_path = legacy_permission(strongest_exact ? strongest_exact
+                                                         : nearest) !=
+                       contract_permission(above | tree | exact);
+    unsigned below =
+        legacy_permission(nearest) != contract_permission(above | tree);
+    unsigned found = (at_path ? CONFLICT_AT_PATH : 0u) |
+                     (below ? CONFLICT_BELOW : 0u);
+    if (found) {
+      any = 1;
+      for (size_t i = first; i < next; ++i)
+        conflicts[order[i].index] = (unsigned char)found;
+    }
+    stack[depth++] = (tree_state_t){path, above | tree, nearest};
+  }
+  free(order);
+  free(stack);
+
+  /* Report as the definition does: the first rule, in the order given,
+   * whose path or whose descendant region differs. Only that one witness is
+   * evaluated against every rule. */
+  maelys_mir_result_t result = MAELYS_MIR_OK;
+  for (size_t i = 0; any && i < count && result == MAELYS_MIR_OK; ++i) {
+    if (!conflicts[i])
+      continue;
+    char *witness = conflicts[i] & CONFLICT_AT_PATH
+                        ? maelys_strdup(rules[i].path)
+                        : descendant_witness(rules, count, rules[i].path);
+    if (!witness) {
+      result = MAELYS_MIR_ERR_MEMORY;
+    } else if (conflict_at(rules, count, witness, out)) {
+      out->witness = witness;
+      result = MAELYS_MIR_ERR_CONFLICT;
+    } else {
+      /* The two searches disagree, which no input should produce: let the
+       * definition decide rather than refuse or accept on a doubt. */
+      free(witness);
+      free(conflicts);
+      return maelys_plan_find_conflict_reference(rules, count, out);
+    }
+  }
+  free(conflicts);
+  return result;
 }
 
 /* Grants first, then every deny: a backend that applies rules in order and
