@@ -61,6 +61,12 @@ build/bin/maelys-policy artifact-hash examples/workspace.json
 build/bin/maelys-policy describe --summary --format json --compact
 ```
 
+`examples/workspace.json` denies `.git` with `missing: skip`. Where the
+workspace has no `.git`, the resolved plan requires the backend capability
+`fs-protect-create`; a backend that does not announce it refuses the launch
+rather than run with the deny removed. See the
+[permission contract](docs/permission-contract.md).
+
 ## Portable tooling (the v2.5 milestone)
 
 MIR format v3 remains the normative identity format. The portable-tooling

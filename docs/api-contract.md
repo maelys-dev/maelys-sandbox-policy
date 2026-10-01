@@ -69,6 +69,12 @@ weakening it and account for filesystem changes between compilation and spawn.
 The plan's mediator identifier is an opaque backend selection/configuration key,
 not a command line and not a network endpoint controlled by the MIR producer.
 
+A resolved rule carries `missing`: `ERROR` for a path that existed at
+resolution, `PROTECT_CREATE` for a deny whose target did not. The latter
+makes the plan require `CAP_FS_PROTECT_CREATE`; see the
+[permission contract](permission-contract.md). An absent deny is never
+dropped.
+
 `missing: skip` applies only when canonicalization reports `ENOENT` or
 `ENOTDIR`, represented as `MAELYS_MIR_ERR_MISSING`. Permission errors, symlink
 loops, and every other canonicalization failure remain hard errors. This is

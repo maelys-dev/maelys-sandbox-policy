@@ -1,0 +1,10 @@
+# The same under a writable tree, where the sandboxed process itself could
+# create the path: the plan needs the protection, it is not optional.
+rule write tree /workspace
+rule deny exact /workspace/.env protect-create
+rule deny tree /workspace/secrets/prod protect-create
+query /workspace/.env none deny-rule
+query /workspace/secrets/prod/key none deny-rule
+query /workspace/secrets/dev/key read-write write-rule
+requires fs-protect-create
+compile accepted

@@ -201,4 +201,4 @@ install: all $(BUILD)/pkgconfig/maelys-mir.pc $(BUILD)/pkgconfig/maelys-sandbox-
 clean:
 	rm -rf $(BUILD)
 
--include $(MIR_OBJ:.o=.d) $(POLICY_OBJ:.o=.d) $(BUILD)/cli/maelys-policy.d
+-include $(MIR_OBJ:.o=.d) $(POLICY_OBJ:.o=.d) $(BUILD)/cli/maelys-policy.d $(wildcard $(BUILD)/tests/*.d)

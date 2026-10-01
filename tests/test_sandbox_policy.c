@@ -192,7 +192,7 @@ static void test_destination_flags_require_capabilities(void) {
   CHECK(maelys_sandbox_policy_compile(
             m, h, all_caps | MAELYS_SANDBOX_POLICY_CAP_NETWORK_PRIVATE_ADDRESSES,
             &p, &e) == MAELYS_MIR_ERR_UNSUPPORTED);
-  CHECK(e && strstr(e, "TLS SNI") != NULL);
+  CHECK(e && strstr(e, "network-require-tls-sni") != NULL);
   maelys_mir_error_free(e);
   e = NULL;
   CHECK(maelys_sandbox_policy_compile(
@@ -359,12 +359,16 @@ static void test_missing_is_not_io_failure(void) {
   CHECK_OK(maelys_sandbox_policy_host_create(&h, &e));
   CHECK_OK(maelys_sandbox_policy_host_set_workspace(h, root, &e));
 
+  /* An absent deny used to vanish from the plan. It is kept, and a backend
+   * that cannot protect its creation gets no plan at all. */
   maelys_mir_t *m = missing_policy("absent");
-  CHECK_OK(maelys_sandbox_policy_compile(m, h, all_caps, &p, &e));
-  CHECK(maelys_sandbox_policy_plan_rule_count(p) == 0);
-  maelys_sandbox_policy_plan_destroy(p);
+  CHECK(maelys_sandbox_policy_compile(m, h, all_caps, &p, &e) ==
+        MAELYS_MIR_ERR_UNSUPPORTED);
+  CHECK(p == NULL);
+  CHECK(e && strstr(e, "fs-protect-create") != NULL);
+  maelys_mir_error_free(e);
+  e = NULL;
   maelys_mir_destroy(m);
-  p = NULL;
 
   char loop[512];
   CHECK(snprintf(loop, sizeof(loop), "%s/loop", root) > 0);
@@ -380,6 +384,215 @@ static void test_missing_is_not_io_failure(void) {
   CHECK(rmdir(root) == 0);
 }
 
+static maelys_mir_t *one_rule(maelys_mir_fs_access_t access,
+                              maelys_mir_path_root_t root, const char *relative,
+                              maelys_mir_missing_path_t missing) {
+  maelys_mir_builder_t *b = NULL;
+  maelys_mir_t *m = NULL;
+  char *e = NULL;
+  CHECK_OK(maelys_mir_builder_create(&b, &e));
+  CHECK_OK(maelys_mir_builder_add_fs_rule(b, access, root, relative,
+                                          MAELYS_MIR_SCOPE_TREE, missing, &e));
+  CHECK_OK(maelys_mir_builder_build(b, &m, &e));
+  maelys_mir_builder_destroy(b);
+  maelys_mir_error_free(e);
+  return m;
+}
+
+static const maelys_sandbox_policy_capabilities_t protect_caps =
+    MAELYS_SANDBOX_POLICY_CAP_FS_READ | MAELYS_SANDBOX_POLICY_CAP_FS_WRITE |
+    MAELYS_SANDBOX_POLICY_CAP_FS_DENY | MAELYS_SANDBOX_POLICY_CAP_NETWORK_NONE |
+    MAELYS_SANDBOX_POLICY_CAP_PROCESS_TREE |
+    MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE;
+
+/* Compiles a deny with missing:skip on `relative` and checks the single
+ * protect-create rule it must leave, at `expected` under the resolved root. */
+static void expect_protected(const maelys_sandbox_policy_host_t *h,
+                             const char *resolved_root, const char *relative,
+                             const char *expected) {
+  maelys_mir_t *m = one_rule(MAELYS_MIR_FS_DENY, MAELYS_MIR_ROOT_WORKSPACE,
+                             relative, MAELYS_MIR_MISSING_SKIP);
+  maelys_sandbox_policy_plan_t *p = NULL;
+  char *e = NULL;
+  char path[700];
+  CHECK(snprintf(path, sizeof(path), "%s/%s", resolved_root, expected) > 0);
+  CHECK_OK(maelys_sandbox_policy_compile(m, h, protect_caps, &p, &e));
+  CHECK(maelys_sandbox_policy_plan_rule_count(p) == 1u);
+  maelys_sandbox_policy_resolved_rule_view_t rule;
+  CHECK_OK(maelys_sandbox_policy_plan_rule_at(p, 0, &rule));
+  CHECK(rule.access == MAELYS_MIR_FS_DENY &&
+        rule.missing == MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE);
+  if (strcmp(rule.path, path) != 0) {
+    fprintf(stderr, "FAIL %s: deny on %s resolved to %s, expected %s\n",
+            __FILE__, relative, rule.path, path);
+    ++failures;
+  }
+  CHECK(maelys_sandbox_policy_plan_required_capabilities(p) &
+        MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE);
+  maelys_sandbox_policy_evaluation_t evaluation;
+  CHECK_OK(maelys_sandbox_policy_plan_evaluate(p, path, &evaluation, &e));
+  CHECK(evaluation.permission == MAELYS_SANDBOX_POLICY_PERMISSION_NONE &&
+        evaluation.reason == MAELYS_SANDBOX_POLICY_REASON_DENY_RULE);
+  maelys_sandbox_policy_plan_destroy(p);
+  maelys_mir_destroy(m);
+  maelys_mir_error_free(e);
+}
+
+static void expect_absent_deny_error(const maelys_sandbox_policy_host_t *h,
+                                     const char *relative,
+                                     maelys_mir_missing_path_t missing,
+                                     maelys_mir_result_t expected,
+                                     const char *fragment) {
+  maelys_mir_t *m = one_rule(MAELYS_MIR_FS_DENY, MAELYS_MIR_ROOT_WORKSPACE,
+                             relative, missing);
+  maelys_sandbox_policy_plan_t *p = NULL;
+  char *e = NULL;
+  maelys_mir_result_t got =
+      maelys_sandbox_policy_compile(m, h, protect_caps, &p, &e);
+  if (got != expected || p != NULL || !e || !strstr(e, fragment)) {
+    fprintf(stderr, "FAIL %s: deny on %s gave %s (%s), expected %s with '%s'\n",
+            __FILE__, relative, maelys_mir_result_name(got), e ? e : "-",
+            maelys_mir_result_name(expected), fragment);
+    ++failures;
+  }
+  maelys_sandbox_policy_plan_destroy(p);
+  maelys_mir_destroy(m);
+  maelys_mir_error_free(e);
+}
+
+static void test_absent_deny(void) {
+  char root[] = "/tmp/maelys-sandbox-policy-absent-XXXXXX";
+  char outside[] = "/tmp/maelys-sandbox-policy-outside-XXXXXX";
+  CHECK(make_temp_dir(root) && make_temp_dir(outside));
+  char *resolved_root = realpath(root, NULL);
+  char real_dir[512], inner[512], dangling[512], escape[512], file[512];
+  CHECK(snprintf(real_dir, sizeof(real_dir), "%s/real", root) > 0);
+  CHECK(snprintf(inner, sizeof(inner), "%s/inner", root) > 0);
+  CHECK(snprintf(dangling, sizeof(dangling), "%s/dangling", root) > 0);
+  CHECK(snprintf(escape, sizeof(escape), "%s/escape", root) > 0);
+  CHECK(snprintf(file, sizeof(file), "%s/file", root) > 0);
+  CHECK(mkdir(real_dir, 0700) == 0);
+  CHECK(symlink("real", inner) == 0);
+  CHECK(symlink("nowhere", dangling) == 0);
+  CHECK(symlink(outside, escape) == 0);
+  FILE *stream = fopen(file, "w");
+  CHECK(stream != NULL && fclose(stream) == 0);
+  maelys_sandbox_policy_host_t *h = NULL;
+  char *e = NULL;
+  CHECK_OK(maelys_sandbox_policy_host_create(&h, &e));
+  CHECK_OK(maelys_sandbox_policy_host_set_workspace(h, root, &e));
+
+  /* The canonical existing prefix, then the literal remaining components. */
+  expect_protected(h, resolved_root, ".git", ".git");
+  expect_protected(h, resolved_root, "a/b/c", "a/b/c");
+  expect_protected(h, resolved_root, "real/later", "real/later");
+  expect_protected(h, resolved_root, "inner/later/deep", "real/later/deep");
+
+  /* Nothing ambiguous is named. */
+  expect_absent_deny_error(h, "dangling", MAELYS_MIR_MISSING_SKIP,
+                           MAELYS_MIR_ERR_IO, "dangling symbolic link");
+  expect_absent_deny_error(h, "dangling/child", MAELYS_MIR_MISSING_SKIP,
+                           MAELYS_MIR_ERR_IO, "dangling symbolic link");
+  expect_absent_deny_error(h, "file/child", MAELYS_MIR_MISSING_SKIP,
+                           MAELYS_MIR_ERR_IO, "non-directory");
+  expect_absent_deny_error(h, "escape/child", MAELYS_MIR_MISSING_SKIP,
+                           MAELYS_MIR_ERR_FORMAT, "leaves its symbolic root");
+  /* missing:error stays an error, whatever the backend offers. */
+  expect_absent_deny_error(h, ".git", MAELYS_MIR_MISSING_ERROR,
+                           MAELYS_MIR_ERR_MISSING, "does not exist");
+
+  /* An absent grant is still omitted, and asks nothing of the backend. */
+  maelys_mir_t *m = one_rule(MAELYS_MIR_FS_WRITE, MAELYS_MIR_ROOT_WORKSPACE,
+                             "build", MAELYS_MIR_MISSING_SKIP);
+  maelys_sandbox_policy_plan_t *p = NULL;
+  CHECK_OK(maelys_sandbox_policy_compile(m, h, all_caps, &p, &e));
+  CHECK(maelys_sandbox_policy_plan_rule_count(p) == 0u);
+  CHECK(!(maelys_sandbox_policy_plan_required_capabilities(p) &
+          MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE));
+  maelys_sandbox_policy_plan_destroy(p);
+  maelys_mir_destroy(m);
+
+  /* A deny that exists is an ordinary rule. */
+  m = one_rule(MAELYS_MIR_FS_DENY, MAELYS_MIR_ROOT_WORKSPACE, "real",
+               MAELYS_MIR_MISSING_SKIP);
+  p = NULL;
+  CHECK_OK(maelys_sandbox_policy_compile(m, h, all_caps, &p, &e));
+  maelys_sandbox_policy_resolved_rule_view_t rule;
+  CHECK_OK(maelys_sandbox_policy_plan_rule_at(p, 0, &rule));
+  CHECK(rule.missing == MAELYS_SANDBOX_POLICY_MISSING_ERROR);
+  maelys_sandbox_policy_plan_destroy(p);
+  maelys_mir_destroy(m);
+
+  /* Every missing capability is named at once, the discovered one too. */
+  m = one_rule(MAELYS_MIR_FS_DENY, MAELYS_MIR_ROOT_WORKSPACE, ".git",
+               MAELYS_MIR_MISSING_SKIP);
+  maelys_sandbox_policy_capabilities_t required = 0;
+  CHECK_OK(maelys_sandbox_policy_resolved_capabilities(m, h, &required, &e));
+  CHECK(required == (maelys_sandbox_policy_required_capabilities(m) |
+                     MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE));
+  p = NULL;
+  CHECK(maelys_sandbox_policy_compile(m, h, MAELYS_SANDBOX_POLICY_CAP_NETWORK_NONE,
+                                      &p, &e) == MAELYS_MIR_ERR_UNSUPPORTED);
+  CHECK(p == NULL);
+  CHECK(e && strstr(e, "fs-deny") && strstr(e, "fs-protect-create"));
+  maelys_mir_error_free(e);
+  e = NULL;
+  maelys_mir_destroy(m);
+  CHECK(strcmp(maelys_sandbox_policy_capability_name(
+                   MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE),
+               "fs-protect-create") == 0);
+  CHECK(maelys_sandbox_policy_capability_name(0) == NULL);
+  CHECK(maelys_sandbox_policy_capability_name(3) == NULL);
+
+  maelys_sandbox_policy_host_destroy(h);
+  free(resolved_root);
+  CHECK(unlink(file) == 0 && unlink(escape) == 0 && unlink(dangling) == 0 &&
+        unlink(inner) == 0 && rmdir(real_dir) == 0 && rmdir(root) == 0 &&
+        rmdir(outside) == 0);
+}
+
+/* examples/workspace.json reads the workspace and denies .git with
+ * missing:skip. In a workspace that has no .git, a backend that cannot
+ * protect its creation must get no plan: the example is not edited to hide
+ * that loss of availability. */
+static void test_example_without_git(void) {
+  char root[] = "/tmp/maelys-sandbox-policy-example-XXXXXX";
+  CHECK(make_temp_dir(root));
+  FILE *stream = fopen("examples/workspace.json", "rb");
+  CHECK(stream != NULL);
+  if (!stream)
+    return;
+  static uint8_t json[8192];
+  size_t size = fread(json, 1u, sizeof(json), stream);
+  CHECK(fclose(stream) == 0 && size > 0u && size < sizeof(json));
+  maelys_mir_t *m = NULL;
+  char *e = NULL;
+  CHECK_OK(maelys_mir_compile_json(json, size, &m, &e));
+  maelys_sandbox_policy_host_t *h = NULL;
+  CHECK_OK(maelys_sandbox_policy_host_create(&h, &e));
+  CHECK_OK(maelys_sandbox_policy_host_set_workspace(h, root, &e));
+  CHECK_OK(maelys_sandbox_policy_host_add_minimal_runtime_root(h, "/usr", &e));
+  maelys_sandbox_policy_plan_t *p = NULL;
+  CHECK(maelys_sandbox_policy_compile(m, h, all_caps, &p, &e) ==
+        MAELYS_MIR_ERR_UNSUPPORTED);
+  CHECK(p == NULL);
+  CHECK(e && strstr(e, "fs-protect-create") != NULL);
+  maelys_mir_error_free(e);
+  e = NULL;
+
+  /* With .git present, the same policy and backend are accepted. */
+  char git[512];
+  CHECK(snprintf(git, sizeof(git), "%s/.git", root) > 0);
+  CHECK(mkdir(git, 0700) == 0);
+  CHECK_OK(maelys_sandbox_policy_compile(m, h, all_caps, &p, &e));
+  CHECK(maelys_sandbox_policy_plan_rule_count(p) == 3u);
+  maelys_sandbox_policy_plan_destroy(p);
+  maelys_sandbox_policy_host_destroy(h);
+  maelys_mir_destroy(m);
+  maelys_mir_error_free(e);
+  CHECK(rmdir(git) == 0 && rmdir(root) == 0);
+}
+
 int main(void) {
   test_compile();
   test_symlink_escape();
@@ -387,6 +600,8 @@ int main(void) {
   test_permission_contract();
   test_destination_flags_require_capabilities();
   test_missing_is_not_io_failure();
+  test_absent_deny();
+  test_example_without_git();
   if (failures)
     fprintf(stderr, "%d sandbox test failures\n", failures);
   return failures ? 1 : 0;

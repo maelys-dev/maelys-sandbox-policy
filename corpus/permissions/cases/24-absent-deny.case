@@ -1,0 +1,10 @@
+# A deny whose target did not exist at resolution is kept, marked
+# protect-create. It decides like any deny; the backend must also keep the
+# path from being created, or refuse the plan before launch.
+rule read tree /workspace
+rule deny tree /workspace/.git protect-create
+query /workspace/.git none deny-rule
+query /workspace/.git/config none deny-rule
+query /workspace/src/main.c read read-rule
+requires fs-protect-create
+compile accepted

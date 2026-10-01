@@ -57,6 +57,7 @@ typedef struct maelys_sandbox_policy_resolved_rule {
   maelys_mir_fs_access_t access;
   maelys_mir_path_scope_t scope;
   char *path;
+  maelys_sandbox_policy_missing_t missing;
 } maelys_sandbox_policy_resolved_rule_t;
 
 struct maelys_sandbox_policy_plan {
@@ -69,6 +70,7 @@ struct maelys_sandbox_policy_plan {
   maelys_mir_network_destination_t *network_destinations;
   size_t network_destination_count;
   int process_tree_required;
+  maelys_sandbox_policy_capabilities_t required;
   char digest[MAELYS_MIR_DIGEST_HEX_SIZE];
 };
 
