@@ -108,6 +108,29 @@ maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
 maelys_mir_result_t maelys_plan_find_conflict_reference(
     const maelys_sandbox_policy_resolved_rule_t *rules, size_t count,
     maelys_plan_conflict_t *out);
+/* Paths in component order: '/' sorts before every other byte, so a path is
+ * followed at once by everything under it. */
+int maelys_path_component_order(const char *a, const char *b);
+int maelys_path_strictly_above(const char *ancestor, const char *path);
+/* A path strictly inside `base` that no rule names nor lies under; owned by
+ * the caller, NULL when out of memory. */
+char *maelys_plan_descendant_witness(
+    const maelys_sandbox_policy_resolved_rule_t *rules, size_t count,
+    const char *base);
+/* The contract over a set of applicable accesses, one bit per access. */
+#define MAELYS_ACCESS_BIT(access) (1u << (unsigned)(access))
+maelys_sandbox_policy_permission_t maelys_contract_permission(unsigned accesses);
+/* The first path, in component order, where the candidate rules grant more
+ * than the boundary rules; *out_witness is NULL when there is none. The
+ * reference decides by the definition, in quadratic time. */
+maelys_mir_result_t maelys_plan_filesystem_excess(
+    const maelys_sandbox_policy_resolved_rule_t *boundary, size_t boundary_count,
+    const maelys_sandbox_policy_resolved_rule_t *candidate,
+    size_t candidate_count, char **out_witness);
+maelys_mir_result_t maelys_plan_filesystem_excess_reference(
+    const maelys_sandbox_policy_resolved_rule_t *boundary, size_t boundary_count,
+    const maelys_sandbox_policy_resolved_rule_t *candidate,
+    size_t candidate_count, char **out_witness);
 /* Refuses a precedence conflict, then puts the rules in plan order. */
 maelys_mir_result_t
 maelys_sandbox_policy_plan_finalize(maelys_sandbox_policy_plan_t *plan,

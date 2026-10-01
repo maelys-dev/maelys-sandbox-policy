@@ -132,7 +132,7 @@ legacy_evaluate(const maelys_sandbox_policy_resolved_rule_t *rules,
 /* A path strictly inside `base` that no rule names nor lies under, so the
  * rules applying to it are exactly the tree rules at or above `base`. Each
  * rule path can spoil one candidate at most, so count + 1 attempts suffice. */
-static char *descendant_witness(
+char *maelys_plan_descendant_witness(
     const maelys_sandbox_policy_resolved_rule_t *rules, size_t count,
     const char *base) {
   size_t base_length = strlen(base);
@@ -191,7 +191,7 @@ maelys_mir_result_t maelys_plan_find_conflict_reference(
       out->witness = maelys_strdup(rules[i].path);
       return out->witness ? MAELYS_MIR_ERR_CONFLICT : MAELYS_MIR_ERR_MEMORY;
     }
-    char *inside = descendant_witness(rules, count, rules[i].path);
+    char *inside = maelys_plan_descendant_witness(rules, count, rules[i].path);
     if (!inside)
       return MAELYS_MIR_ERR_MEMORY;
     if (conflict_at(rules, count, inside, out)) {
@@ -214,7 +214,7 @@ maelys_mir_result_t maelys_plan_find_conflict_reference(
  * without reading any other rule.
  */
 
-static int component_order(const char *a, const char *b) {
+int maelys_path_component_order(const char *a, const char *b) {
   for (;; ++a, ++b) {
     unsigned char x = (unsigned char)*a, y = (unsigned char)*b;
     if (x == y) {
@@ -238,13 +238,13 @@ typedef struct ordered_rule {
 
 static int by_component_order(const void *left, const void *right) {
   const ordered_rule_t *a = left, *b = right;
-  int order = component_order(a->path, b->path);
+  int order = maelys_path_component_order(a->path, b->path);
   if (order)
     return order;
   return a->index < b->index ? -1 : a->index > b->index;
 }
 
-static int strictly_above(const char *ancestor, const char *path) {
+int maelys_path_strictly_above(const char *ancestor, const char *path) {
   size_t n = strlen(ancestor);
   if (n == 1u)
     return path[1] != '\0';
@@ -258,16 +258,12 @@ typedef struct tree_state {
   unsigned nearest;         /* strongest access of the deepest tree rules */
 } tree_state_t;
 
-static unsigned access_bit(maelys_mir_fs_access_t access) {
-  return 1u << (unsigned)access;
-}
-
-static maelys_sandbox_policy_permission_t contract_permission(unsigned accesses) {
-  if (accesses & access_bit(MAELYS_MIR_FS_DENY))
+maelys_sandbox_policy_permission_t maelys_contract_permission(unsigned accesses) {
+  if (accesses & MAELYS_ACCESS_BIT(MAELYS_MIR_FS_DENY))
     return MAELYS_SANDBOX_POLICY_PERMISSION_NONE;
-  if (accesses & access_bit(MAELYS_MIR_FS_WRITE))
+  if (accesses & MAELYS_ACCESS_BIT(MAELYS_MIR_FS_WRITE))
     return MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE;
-  if (accesses & access_bit(MAELYS_MIR_FS_READ))
+  if (accesses & MAELYS_ACCESS_BIT(MAELYS_MIR_FS_READ))
     return MAELYS_SANDBOX_POLICY_PERMISSION_READ;
   return MAELYS_SANDBOX_POLICY_PERMISSION_NONE;
 }
@@ -309,16 +305,16 @@ maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
           &rules[order[next].index];
       unsigned access = (unsigned)rule->access;
       if (rule->scope == MAELYS_MIR_SCOPE_TREE) {
-        tree |= access_bit(rule->access);
+        tree |= MAELYS_ACCESS_BIT(rule->access);
         if (access > strongest_tree)
           strongest_tree = access;
       } else {
-        exact |= access_bit(rule->access);
+        exact |= MAELYS_ACCESS_BIT(rule->access);
         if (access > strongest_exact)
           strongest_exact = access;
       }
     }
-    while (depth && !strictly_above(stack[depth - 1u].path, path))
+    while (depth && !maelys_path_strictly_above(stack[depth - 1u].path, path))
       --depth;
     unsigned above = depth ? stack[depth - 1u].accesses : 0u;
     unsigned nearest_above = depth ? stack[depth - 1u].nearest : 0u;
@@ -326,9 +322,9 @@ maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
 
     unsigned at_path = legacy_permission(strongest_exact ? strongest_exact
                                                          : nearest) !=
-                       contract_permission(above | tree | exact);
+                       maelys_contract_permission(above | tree | exact);
     unsigned below =
-        legacy_permission(nearest) != contract_permission(above | tree);
+        legacy_permission(nearest) != maelys_contract_permission(above | tree);
     unsigned found = (at_path ? CONFLICT_AT_PATH : 0u) |
                      (below ? CONFLICT_BELOW : 0u);
     if (found) {
@@ -350,7 +346,7 @@ maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
       continue;
     char *witness = conflicts[i] & CONFLICT_AT_PATH
                         ? maelys_strdup(rules[i].path)
-                        : descendant_witness(rules, count, rules[i].path);
+                        : maelys_plan_descendant_witness(rules, count, rules[i].path);
     if (!witness) {
       result = MAELYS_MIR_ERR_MEMORY;
     } else if (conflict_at(rules, count, witness, out)) {

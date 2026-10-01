@@ -55,6 +55,11 @@ one silently. A backend advertises `CAP_NETWORK_REQUIRE_TLS_SNI` and
 `CAP_NETWORK_PRIVATE_ADDRESSES` only if its mediator enforces them; a plan
 using either flag fails closed without the matching capability.
 
+`maelys_sandbox_policy_plan_contains()` decides whether one resolved plan
+grants nothing another does not, and names a witness per dimension when it
+does. Its answer is about the two plans as resolved; see the conditions in
+the [permission contract](permission-contract.md#containment).
+
 The permissions of a plan are defined by the
 [permission contract](permission-contract.md), not by the order of its rules.
 `maelys_sandbox_policy_plan_evaluate()` returns what the plan grants on one
@@ -112,11 +117,15 @@ it runs. A reported conflict costs one further pass over the rules.
 Measured with `make bench` on an Apple M2 Max, CPU seconds, for policies
 without a conflict:
 
-| Resolved rules | Conflict search | Through 0.6.0 (quadratic) |
-|---|---|---|
-| 4 096 | under 0.02 | 0.4 to 3.6 |
-| 16 384 | under 0.07 | 6 to 61 |
-| 262 144 | under 1.0 | not run; over 30 minutes by extrapolation |
+| Resolved rules | Conflict search | Through 0.6.0 (quadratic) | Containment of two such plans |
+|---|---|---|---|
+| 4 096 | under 0.02 | 0.4 to 3.6 | under 0.04 |
+| 16 384 | under 0.07 | 6 to 61 | under 0.2 |
+| 262 144 | under 1.0 | not run; over 30 minutes by extrapolation | under 2.6 |
+
+`maelys_sandbox_policy_plan_contains` makes the same pass over the rules of
+both plans together, so it costs the same order for their sum, and compares
+at most 1 024 destinations against 1 024.
 
 The spread is the shape of the paths: siblings are cheapest, chains two
 hundred components deep the most expensive. The largest plan, 262 144 rules

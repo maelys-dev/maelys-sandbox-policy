@@ -454,6 +454,190 @@ static void test_search_matches_reference(void) {
   CHECK(conflicts > 5000u && agreements > 5000u);
 }
 
+/* ---- containment ------------------------------------------------------------ */
+
+/*
+ * An evaluator of the contract written for these tests alone. It shares no
+ * code with maelys_plan_evaluate() nor maelys_plan_rule_applies(): it cuts
+ * paths into components and compares component lists, where the library
+ * compares string prefixes. An error common to the library's evaluator and
+ * its searches is therefore visible here.
+ */
+static size_t split_components(const char *path, const char *parts[],
+                               size_t lengths[], size_t capacity) {
+  size_t count = 0;
+  for (const char *cursor = path; *cursor;) {
+    while (*cursor == '/')
+      ++cursor;
+    if (!*cursor)
+      break;
+    const char *end = cursor;
+    while (*end && *end != '/')
+      ++end;
+    if (count < capacity) {
+      parts[count] = cursor;
+      lengths[count] = (size_t)(end - cursor);
+    }
+    ++count;
+    cursor = end;
+  }
+  return count;
+}
+
+static int independent_permission(
+    const maelys_sandbox_policy_resolved_rule_t *rules, size_t count,
+    const char *path) {
+  const char *target[64], *named[64];
+  size_t target_length[64], named_length[64];
+  size_t target_count = split_components(path, target, target_length, 64u);
+  int denied = 0, written = 0, read = 0;
+  for (size_t i = 0; i < count; ++i) {
+    size_t named_count =
+        split_components(rules[i].path, named, named_length, 64u);
+    if (named_count > target_count)
+      continue;
+    if (named_count < target_count && rules[i].scope != MAELYS_MIR_SCOPE_TREE)
+      continue;
+    int prefix = 1;
+    for (size_t c = 0; prefix && c < named_count; ++c)
+      prefix = named_length[c] == target_length[c] &&
+               memcmp(named[c], target[c], named_length[c]) == 0;
+    if (!prefix)
+      continue;
+    if (rules[i].access == MAELYS_MIR_FS_DENY)
+      denied = 1;
+    else if (rules[i].access == MAELYS_MIR_FS_WRITE)
+      written = 1;
+    else
+      read = 1;
+  }
+  return denied ? 0 : written ? 2 : read ? 1 : 0;
+}
+
+static void random_rules(maelys_sandbox_policy_resolved_rule_t *rules,
+                         size_t count, const char *const *paths,
+                         size_t path_count) {
+  for (size_t i = 0; i < count; ++i) {
+    rules[i].access = (maelys_mir_fs_access_t)(1u + next_random() % 3u);
+    rules[i].scope = (maelys_mir_path_scope_t)(1u + next_random() % 2u);
+    rules[i].path = (char *)paths[next_random() % path_count];
+    rules[i].missing = MAELYS_SANDBOX_POLICY_MISSING_ERROR;
+  }
+}
+
+/* Rule paths use two names and three levels; the universe below holds every
+ * path of up to four levels over three names, so each region of each pair of
+ * policies has a path in it and the answer can be checked exhaustively. */
+static void test_containment_is_exact(void) {
+  static const char *const paths[] = {"/",      "/a",     "/b",     "/a/a",
+                                      "/a/b",   "/b/a",   "/a/a/a", "/a/a/b",
+                                      "/a/b/a", "/b/a/b"};
+  static const char *const names[] = {"a", "b", "c"};
+  unsigned contained = 0, exceeded = 0;
+  for (unsigned round = 0; round < 30000u; ++round) {
+    maelys_sandbox_policy_resolved_rule_t boundary[5], candidate[5];
+    size_t n = next_random() % 6u, m = next_random() % 6u;
+    random_rules(boundary, n, paths, 10u);
+    random_rules(candidate, m, paths, 10u);
+    int expected = 1;
+    for (unsigned depth = 0; expected && depth <= 4u; ++depth) {
+      unsigned total = 1;
+      for (unsigned i = 0; i < depth; ++i)
+        total *= 3u;
+      for (unsigned index = 0; expected && index < total; ++index) {
+        char path[32] = "/";
+        size_t used = depth ? 0u : 1u;
+        unsigned rest = index;
+        for (unsigned i = 0; i < depth; ++i, rest /= 3u)
+          used += (size_t)snprintf(path + used, sizeof(path) - used, "/%s",
+                                   names[rest % 3u]);
+        expected = independent_permission(candidate, m, path) <=
+                   independent_permission(boundary, n, path);
+      }
+    }
+    char *witness = NULL, *reference = NULL;
+    CHECK(maelys_plan_filesystem_excess(boundary, n, candidate, m, &witness) ==
+          MAELYS_MIR_OK);
+    CHECK(maelys_plan_filesystem_excess_reference(boundary, n, candidate, m,
+                                                  &reference) == MAELYS_MIR_OK);
+    if ((witness == NULL) != expected) {
+      fprintf(stderr, "FAIL %s: round %u: containment is %s, the search says %s\n",
+              __FILE__, round, expected ? "true" : "false",
+              witness ? witness : "contained");
+      ++failures;
+    }
+    /* A witness is a real excess, by the independent evaluator. */
+    if (witness)
+      CHECK(independent_permission(candidate, m, witness) >
+            independent_permission(boundary, n, witness));
+    CHECK((witness == NULL) == (reference == NULL));
+    if (witness && reference)
+      CHECK(strcmp(witness, reference) == 0);
+    if (expected)
+      ++contained;
+    else
+      ++exceeded;
+    free(witness);
+    free(reference);
+    if (failures)
+      return;
+  }
+  CHECK(contained > 2000u && exceeded > 2000u);
+}
+
+/* The pass and the definition agree on names a byte-order sort misplaces,
+ * on witness-like names and on repeated paths, witness included. */
+static void test_containment_matches_reference(void) {
+  static const char *const paths[] = {
+      "/",       "/a",       "/a-",      "/a.b",   "/a/b",    "/a/b/c",
+      "/a/b-",   "/a/-",     "/ab",      "/b",     "/b/a",    "/b/a/a",
+      "/a/maelys-witness-0", "/a/maelys-witness-1", "/maelys-witness-0",
+      "/a/maelys-witness-0/x", "/a/b/c/d/e", "/b/a/a/a"};
+  const size_t path_count = sizeof(paths) / sizeof(paths[0]);
+  unsigned exceeded = 0;
+  for (unsigned round = 0; round < 60000u; ++round) {
+    maelys_sandbox_policy_resolved_rule_t boundary[8], candidate[8];
+    size_t n = next_random() % 9u, m = next_random() % 9u;
+    random_rules(boundary, n, paths, path_count);
+    random_rules(candidate, m, paths, path_count);
+    char *witness = NULL, *reference = NULL;
+    CHECK(maelys_plan_filesystem_excess(boundary, n, candidate, m, &witness) ==
+          MAELYS_MIR_OK);
+    CHECK(maelys_plan_filesystem_excess_reference(boundary, n, candidate, m,
+                                                  &reference) == MAELYS_MIR_OK);
+    if ((witness == NULL) != (reference == NULL) ||
+        (witness && strcmp(witness, reference) != 0)) {
+      fprintf(stderr, "FAIL %s: round %u: pass says %s, definition says %s\n",
+              __FILE__, round, witness ? witness : "contained",
+              reference ? reference : "contained");
+      ++failures;
+    }
+    if (witness) {
+      CHECK(independent_permission(candidate, m, witness) >
+            independent_permission(boundary, n, witness));
+      ++exceeded;
+    }
+    free(witness);
+    free(reference);
+    if (failures)
+      return;
+  }
+  CHECK(exceeded > 5000u);
+  /* A plan contains itself, and nothing exceeds an empty candidate. */
+  maelys_sandbox_policy_resolved_rule_t rules[6];
+  random_rules(rules, 6u, paths, path_count);
+  char *witness = NULL;
+  CHECK(maelys_plan_filesystem_excess(rules, 6u, rules, 6u, &witness) ==
+            MAELYS_MIR_OK &&
+        witness == NULL);
+  CHECK(maelys_plan_filesystem_excess(rules, 6u, NULL, 0u, &witness) ==
+            MAELYS_MIR_OK &&
+        witness == NULL);
+  CHECK(maelys_plan_filesystem_excess(NULL, 0u, NULL, 0u, &witness) ==
+            MAELYS_MIR_OK &&
+        witness == NULL);
+}
+
 static void test_evaluate_arguments(void) {
   maelys_sandbox_policy_plan_t *plan = calloc(1, sizeof(*plan));
   maelys_sandbox_policy_evaluation_t out;
@@ -486,6 +670,8 @@ int main(int argc, char **argv) {
   test_corpus(argv[1]);
   test_conflict_search_is_complete();
   test_search_matches_reference();
+  test_containment_is_exact();
+  test_containment_matches_reference();
   test_evaluate_arguments();
   if (failures)
     fprintf(stderr, "%d permission test failures\n", failures);

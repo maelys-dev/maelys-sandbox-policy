@@ -106,6 +106,43 @@ static void bench_search(void) {
   }
 }
 
+/* Containment of two plans of `count` rules each: the candidate repeats the
+ * boundary, so nothing exceeds and every region is visited. */
+static void bench_containment(void) {
+  static const char *const shapes[] = {"siblings", "chains"};
+  static const size_t sizes[] = {4096u, 16384u, 262144u};
+  printf("\n%-14s %8s %12s %12s\n", "containment", "rules", "pass (s)",
+         "reference (s)");
+  for (size_t s = 0; s < 2u; ++s) {
+    for (size_t n = 0; n < 3u; ++n) {
+      size_t count = sizes[n];
+      maelys_sandbox_policy_resolved_rule_t *rules = shape(shapes[s], count);
+      char *witness = NULL;
+      clock_t start = clock();
+      maelys_mir_result_t result =
+          maelys_plan_filesystem_excess(rules, count, rules, count, &witness);
+      double pass = (double)(clock() - start) / CLOCKS_PER_SEC;
+      if (result != MAELYS_MIR_OK || witness)
+        exit(1);
+      printf("%-14s %8zu %12.3f", shapes[s], count, pass);
+      if (count <= 4096u) {
+        start = clock();
+        result = maelys_plan_filesystem_excess_reference(rules, count, rules,
+                                                         count, &witness);
+        if (result != MAELYS_MIR_OK || witness)
+          exit(1);
+        printf(" %12.3f\n", (double)(clock() - start) / CLOCKS_PER_SEC);
+      } else {
+        printf(" %12s\n", "not run");
+      }
+      fflush(stdout);
+      for (size_t i = 0; i < count; ++i)
+        free(rules[i].path);
+      free(rules);
+    }
+  }
+}
+
 /* The largest plan a MIR can resolve to: 4096 rules on minimal-runtime,
  * each kept under 64 host roots. */
 static void bench_compile(void) {
@@ -164,6 +201,7 @@ static void bench_compile(void) {
 
 int main(void) {
   bench_search();
+  bench_containment();
   bench_compile();
   return 0;
 }
