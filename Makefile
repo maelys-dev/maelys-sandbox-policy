@@ -37,7 +37,7 @@ POLICY_SRC := src/sandbox_policy.c src/permissions.c src/capabilities.c
 MIR_OBJ := $(MIR_SRC:%.c=$(BUILD)/%.o)
 POLICY_OBJ := $(POLICY_SRC:%.c=$(BUILD)/%.o)
 
-.PHONY: all check clean asan ubsan tsan fuzz fuzz-build install wasm wasm-check reference-check conformance-check playground-dist \
+.PHONY: all check bench clean asan ubsan tsan fuzz fuzz-build install wasm wasm-check reference-check conformance-check playground-dist \
 	check-dependencies check-cli-contract check-spec-contract agent-cli-check
 all: $(BUILD)/lib/libmaelys-mir.a $(BUILD)/lib/libmaelys-sandbox-policy.a $(BUILD)/bin/maelys-policy
 
@@ -112,6 +112,14 @@ $(BUILD)/tests/test_sandbox_policy: $(BUILD)/tests/test_sandbox_policy.o $(BUILD
 $(BUILD)/tests/test_permissions: $(BUILD)/tests/test_permissions.o $(BUILD)/lib/libmaelys-sandbox-policy.a $(BUILD)/lib/libmaelys-mir.a
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $^ -o $@
+
+$(BUILD)/tests/bench_permissions: $(BUILD)/tests/bench_permissions.o $(BUILD)/lib/libmaelys-sandbox-policy.a $(BUILD)/lib/libmaelys-mir.a
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $^ -o $@
+
+# Measures the conflict search and the largest plan; not part of check.
+bench: $(BUILD)/tests/bench_permissions
+	$(BUILD)/tests/bench_permissions
 
 $(BUILD)/tests/test_sha256: $(BUILD)/tests/test_sha256.o $(BUILD)/src/sha256.o $(BUILD)/src/common.o
 	@mkdir -p $(@D)

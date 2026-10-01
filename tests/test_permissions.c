@@ -402,6 +402,58 @@ static void test_conflict_search_is_complete(void) {
   CHECK(conflicts > 1000u && agreements > 1000u);
 }
 
+/* The sorted search must answer exactly as the definition: same verdict,
+ * same witness, same permissions, same deciding rules. The universe mixes
+ * the root, names that byte order would misplace ("/a-", "/a.b" against
+ * "/a/b"), witness-like names that collide with generated witnesses, and
+ * repeated paths. */
+static void test_search_matches_reference(void) {
+  static const char *const paths[] = {
+      "/",       "/a",       "/a-",      "/a.b",   "/a/b",    "/a/b/c",
+      "/a/b-",   "/a/-",     "/ab",      "/b",     "/b/a",    "/b/a/a",
+      "/a/maelys-witness-0", "/a/maelys-witness-1", "/maelys-witness-0",
+      "/a/maelys-witness-0/x", "/a/b/c/d/e", "/b/a/a/a"};
+  const size_t path_count = sizeof(paths) / sizeof(paths[0]);
+  unsigned conflicts = 0, agreements = 0;
+  for (unsigned round = 0; round < 60000u; ++round) {
+    maelys_sandbox_policy_resolved_rule_t rules[12];
+    size_t count = next_random() % 13u;
+    for (size_t i = 0; i < count; ++i) {
+      rules[i].access = (maelys_mir_fs_access_t)(1u + next_random() % 3u);
+      rules[i].scope = (maelys_mir_path_scope_t)(1u + next_random() % 2u);
+      rules[i].path = (char *)paths[next_random() % path_count];
+      rules[i].missing = MAELYS_SANDBOX_POLICY_MISSING_ERROR;
+    }
+    maelys_plan_conflict_t fast, reference;
+    maelys_mir_result_t got = maelys_plan_find_conflict(rules, count, &fast);
+    maelys_mir_result_t expected =
+        maelys_plan_find_conflict_reference(rules, count, &reference);
+    int same = got == expected && fast.before == reference.before &&
+               fast.after == reference.after &&
+               fast.legacy_rule == reference.legacy_rule &&
+               fast.contract_rule == reference.contract_rule &&
+               (fast.witness == NULL) == (reference.witness == NULL) &&
+               (!fast.witness || strcmp(fast.witness, reference.witness) == 0);
+    if (!same) {
+      fprintf(stderr, "FAIL %s: round %u: sorted search %s at %s, reference %s at %s\n",
+              __FILE__, round, maelys_mir_result_name(got),
+              fast.witness ? fast.witness : "-",
+              maelys_mir_result_name(expected),
+              reference.witness ? reference.witness : "-");
+      ++failures;
+    }
+    if (expected == MAELYS_MIR_ERR_CONFLICT)
+      ++conflicts;
+    else
+      ++agreements;
+    free(fast.witness);
+    free(reference.witness);
+    if (failures)
+      return;
+  }
+  CHECK(conflicts > 5000u && agreements > 5000u);
+}
+
 static void test_evaluate_arguments(void) {
   maelys_sandbox_policy_plan_t *plan = calloc(1, sizeof(*plan));
   maelys_sandbox_policy_evaluation_t out;
@@ -433,6 +485,7 @@ int main(int argc, char **argv) {
   }
   test_corpus(argv[1]);
   test_conflict_search_is_complete();
+  test_search_matches_reference();
   test_evaluate_arguments();
   if (failures)
     fprintf(stderr, "%d permission test failures\n", failures);

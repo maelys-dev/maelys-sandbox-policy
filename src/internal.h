@@ -104,6 +104,10 @@ void maelys_plan_evaluate(const maelys_sandbox_policy_resolved_rule_t *rules,
 maelys_mir_result_t
 maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
                           size_t count, maelys_plan_conflict_t *out);
+/* The same answer by the definition, in time quadratic in `count`. */
+maelys_mir_result_t maelys_plan_find_conflict_reference(
+    const maelys_sandbox_policy_resolved_rule_t *rules, size_t count,
+    maelys_plan_conflict_t *out);
 /* Refuses a precedence conflict, then puts the rules in plan order. */
 maelys_mir_result_t
 maelys_sandbox_policy_plan_finalize(maelys_sandbox_policy_plan_t *plan,

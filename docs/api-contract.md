@@ -84,6 +84,46 @@ Executable identity and arguments belong to the Executor's trusted
 `ExecutionRequest`, not to MIR. A backend compiler combines that request with
 the immutable SandboxPlan and backend context immediately before enforcement;
 it must grant only the process-execution primitives necessary for that request.
+## Resource bounds
+
+The inputs are bounded, and so is the work done on them. Nothing here
+introduces a limit: these are the limits that already exist and what they
+cost.
+
+| Bound | Value | Where |
+|---|---|---|
+| MIR document | 1 MiB | `MAELYS_MIR_MAX_BYTES` |
+| filesystem rules of a MIR | 4 096 | `MAELYS_MIR_MAX_RULES` |
+| network destinations of a MIR | 1 024 | `MAELYS_MIR_MAX_NETWORK_DESTINATIONS` |
+| minimal-runtime roots of a host | 64 | `maelys_sandbox_policy_host_add_minimal_runtime_root` |
+| resolved rules of a plan | 262 144 | 4 096 rules, each kept under 64 roots |
+
+A rule on `minimal-runtime` resolves once per host root, so a plan may hold
+64 times the rules of its MIR. That maximum is reachable from binary MIR and
+from the C builder; the JSON source names the minimal runtime only as a
+whole.
+
+`maelys_sandbox_policy_compile` resolves each rule, searches the plan for a
+precedence conflict and sorts it. With N resolved rules, the search and the
+sort take a number of path comparisons proportional to N log N, each bounded
+by the length of a path, and the search holds about 41 bytes per rule while
+it runs. A reported conflict costs one further pass over the rules.
+
+Measured with `make bench` on an Apple M2 Max, CPU seconds, for policies
+without a conflict:
+
+| Resolved rules | Conflict search | Through 0.6.0 (quadratic) |
+|---|---|---|
+| 4 096 | under 0.02 | 0.4 to 3.6 |
+| 16 384 | under 0.07 | 6 to 61 |
+| 262 144 | under 1.0 | not run; over 30 minutes by extrapolation |
+
+The spread is the shape of the paths: siblings are cheapest, chains two
+hundred components deep the most expensive. The largest plan, 262 144 rules
+on absent targets, compiles in 3.7 s and holds 15 MB of paths and 6 MB of
+rules. These are measurements of one machine, not guarantees, and they bound
+no wall-clock time.
+
 ## Inspection and artifact hashing
 
 `maelys_mir_inspect_json()` produces a deterministic JSON view of the resolved
