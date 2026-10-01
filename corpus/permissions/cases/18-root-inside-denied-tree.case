@@ -1,5 +1,8 @@
 # A writable root resolved under a denied tree stays denied.
 rule deny tree /srv/workspace/private
 rule write tree /srv/workspace/private/tmp
+node directory /srv/workspace/private
+node directory /srv/workspace/private/tmp
+node file /srv/workspace/private/tmp/scratch
 query /srv/workspace/private/tmp/scratch none deny-rule
 compile refused before=read-write after=none

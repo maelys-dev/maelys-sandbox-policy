@@ -1,6 +1,8 @@
 # Two grants on one target: write.
 rule read tree /workspace
 rule write tree /workspace
+node directory /workspace
+node file /workspace/a
 query /workspace read-write write-rule
 query /workspace/a read-write write-rule
 compile accepted

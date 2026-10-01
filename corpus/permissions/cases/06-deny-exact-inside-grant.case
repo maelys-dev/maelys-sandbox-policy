@@ -1,6 +1,11 @@
-# An exact deny removes one path; what lies under it keeps the grant.
+# An exact deny removes one path; what lies under it keeps the grant. The
+# target is a directory here; case 27 is the same deny on a file.
 rule write tree /workspace
 rule deny exact /workspace/secret
+node directory /workspace
+node file /workspace/other
+node directory /workspace/secret
+node file /workspace/secret/child
 query /workspace/secret none deny-rule
 query /workspace/secret/child read-write write-rule
 query /workspace/other read-write write-rule

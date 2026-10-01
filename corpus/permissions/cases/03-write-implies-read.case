@@ -1,5 +1,8 @@
 # Write grants read and write.
 rule write tree /workspace/build
+node directory /workspace
+node directory /workspace/build
+node file /workspace/build/out/a.o
 query /workspace/build read-write write-rule
 query /workspace/build/out/a.o read-write write-rule
 query /workspace none default-deny

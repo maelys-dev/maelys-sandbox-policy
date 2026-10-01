@@ -3,6 +3,10 @@
 # path from being created, or refuse the plan before launch.
 rule read tree /workspace
 rule deny tree /workspace/.git protect-create
+node directory /workspace
+node absent /workspace/.git
+node absent /workspace/.git/config
+node file /workspace/src/main.c
 query /workspace/.git none deny-rule
 query /workspace/.git/config none deny-rule
 query /workspace/src/main.c read read-rule

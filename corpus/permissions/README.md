@@ -29,11 +29,19 @@ a comment. Paths contain no whitespace.
 
 ```
 rule <read|write|deny> <exact|tree> <absolute path> [protect-create]
+node <file|directory|absent> <absolute path>
 requires <capability>
 query <absolute path> <none|read|read-write> <default-deny|deny-rule|write-rule|read-rule>
 compile <accepted|refused before=<permission> after=<permission>>
 ```
 
+- `node` states what a path is on the host, so that a consumer builds the
+  same tree as every other and guesses nothing. Every path named by a `rule`
+  or a `query` has exactly one `node` line; an ancestor that no line names is
+  a directory. Nothing lies beneath a `file`, and only `absent` paths lie
+  beneath an `absent` one. A rule target is `absent` exactly when the rule is
+  `protect-create`. The contract itself ignores these types: a rule applies
+  to a path whatever it is.
 - `protect-create` marks a deny whose target did not exist when the plan was
   resolved (`MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE`). It decides like
   any deny. `requires fs-protect-create` states that the plan needs that
@@ -53,6 +61,12 @@ enforces. A result is conformant when the permission is **enforced as
 stated**, or when the plan is **refused before launch** because the backend
 cannot guarantee it. A refusal is not an enforced case and is reported
 apart. Refused cases never reach a backend.
+
+An `exact` rule names one path and nothing under it, whatever its type. On
+a **directory** that means the directory node alone, none of its entries
+(cases 04, 06 and 22): a backend that cannot confine a rule to one directory
+node refuses those plans, which is conformant. On a **file** (cases 26 and
+27) there is nothing under it to exclude.
 
 For a `protect-create` rule, enforcing means more than answering the
 queries: the backend keeps the path from being created, linked or renamed

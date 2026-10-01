@@ -1,6 +1,8 @@
 # On one target and scope, deny wins under both contracts.
 rule read tree /workspace
 rule deny tree /workspace
+node directory /workspace
+node file /workspace/a
 query /workspace none deny-rule
 query /workspace/a none deny-rule
 compile accepted

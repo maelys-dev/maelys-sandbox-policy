@@ -1,6 +1,8 @@
 # Exact does not beat tree on the same path: the deny applies.
 rule deny tree /workspace
 rule read exact /workspace
+node directory /workspace
+node file /workspace/a
 query /workspace none deny-rule
 query /workspace/a none deny-rule
 compile refused before=read after=none

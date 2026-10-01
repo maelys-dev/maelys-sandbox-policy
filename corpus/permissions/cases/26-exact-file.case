@@ -1,0 +1,9 @@
+# An exact rule on a file grants that file and nothing beside it.
+rule read exact /workspace/README
+node directory /workspace
+node file /workspace/README
+node file /workspace/NOTES
+query /workspace/README read read-rule
+query /workspace/NOTES none default-deny
+query /workspace none default-deny
+compile accepted

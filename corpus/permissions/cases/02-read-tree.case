@@ -1,5 +1,9 @@
 # A tree rule covers its path and everything under it, on segment boundaries.
 rule read tree /workspace
+node file /work
+node directory /workspace
+node file /workspace/src/main.c
+node file /workspace2
 query /workspace read read-rule
 query /workspace/src/main.c read read-rule
 query /workspace2 none default-deny
