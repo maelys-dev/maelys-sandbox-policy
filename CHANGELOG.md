@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — 2026-10-01
+
+This release fixes what the filesystem rules of a policy grant. MIR bytes
+and digests are unchanged, so nothing is silently reinterpreted: a policy the
+earlier rule order read differently is refused. Read the breaking entries
+before upgrading a consumer: ambiguous policies no longer compile to a plan,
+a deny on an absent path now requires a backend capability, and the
+SandboxPlan ABI is 5.
 
 - **breaking (SandboxPlan, ABI 5):** the filesystem permissions of a plan are
   now a normative [contract](docs/permission-contract.md) independent of rule
@@ -49,7 +56,8 @@
   absent grants resolution left out of a plan;
 - report every missing capability at once, by stable identifier
   (`maelys_sandbox_policy_capability_name()`), including those only resolution
-  discovers (`maelys_sandbox_policy_resolved_capabilities()`).
+  discovers (`maelys_sandbox_policy_resolved_capabilities()`);
+- adopt maelys-release v0.62.2.
 
 ## 0.5.1 — 2026-09-27
 
