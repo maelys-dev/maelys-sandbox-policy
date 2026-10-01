@@ -61,8 +61,16 @@ build/bin/maelys-policy artifact-hash examples/workspace.json
 build/bin/maelys-policy restrict policy.mir ceiling.mir --output effective.mir --apply
 build/bin/maelys-policy capabilities policy.mir    # what a backend must offer
 build/bin/maelys-policy capabilities policy.mir --check --available fs-read   # exit 2 if some are missing
+build/bin/maelys-policy resolve policy.mir --workspace "$PWD" --minimal-root /usr   # rules on this host
+build/bin/maelys-policy evaluate policy.mir --workspace "$PWD" --minimal-root /usr --path "$PWD/src/main.c"
 build/bin/maelys-policy describe --summary --format json --compact
 ```
+
+`resolve` and `evaluate` answer for one host: the directories given for the
+symbolic roots, as they are when the command runs. Their output is a
+diagnostic of that resolution, never a policy identity, and it proves
+nothing about what a backend installed. `evaluate` takes `--path` as written,
+as a resolved path: it follows no link.
 
 `examples/workspace.json` denies `.git` with `missing: skip`. Where the
 workspace has no `.git`, the resolved plan requires the backend capability

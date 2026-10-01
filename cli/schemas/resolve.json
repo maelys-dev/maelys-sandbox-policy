@@ -1,0 +1,241 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "policy",
+    "digest",
+    "scope",
+    "permissionContract",
+    "context",
+    "resolved",
+    "rules",
+    "omitted",
+    "capabilities",
+    "blockers",
+    "blocked"
+  ],
+  "properties": {
+    "policy": {
+      "type": "string"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "scope": {
+      "const": "host"
+    },
+    "permissionContract": {
+      "const": 2
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimalRoots"
+      ],
+      "properties": {
+        "workspace": {
+          "type": "string"
+        },
+        "temp": {
+          "type": "string"
+        },
+        "minimalRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mediator": {
+          "type": "string"
+        }
+      }
+    },
+    "resolved": {
+      "type": "boolean"
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "access",
+          "scope",
+          "path",
+          "missing"
+        ],
+        "properties": {
+          "access": {
+            "enum": [
+              "read",
+              "write",
+              "deny"
+            ]
+          },
+          "scope": {
+            "enum": [
+              "exact",
+              "tree"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "missing": {
+            "enum": [
+              "error",
+              "protect-create"
+            ]
+          }
+        }
+      }
+    },
+    "omitted": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "access",
+          "scope",
+          "root",
+          "relative",
+          "reason"
+        ],
+        "properties": {
+          "access": {
+            "enum": [
+              "read",
+              "write"
+            ]
+          },
+          "scope": {
+            "enum": [
+              "exact",
+              "tree"
+            ]
+          },
+          "root": {
+            "enum": [
+              "minimal-runtime",
+              "workspace",
+              "temp",
+              "host"
+            ]
+          },
+          "relative": {
+            "type": "string"
+          },
+          "hostRoot": {
+            "type": "string"
+          },
+          "reason": {
+            "const": "absent-grant"
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "required",
+        "checked"
+      ],
+      "properties": {
+        "from": {
+          "enum": [
+            "plan",
+            "mir"
+          ]
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "fs-read",
+              "fs-write",
+              "fs-deny",
+              "network-none",
+              "network-direct",
+              "network-mediated",
+              "process-tree",
+              "root-ephemeral-write",
+              "network-require-tls-sni",
+              "network-private-addresses",
+              "fs-protect-create"
+            ]
+          }
+        },
+        "checked": {
+          "type": "boolean"
+        },
+        "available": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "fs-read",
+              "fs-write",
+              "fs-deny",
+              "network-none",
+              "network-direct",
+              "network-mediated",
+              "process-tree",
+              "root-ephemeral-write",
+              "network-require-tls-sni",
+              "network-private-addresses",
+              "fs-protect-create"
+            ]
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "fs-read",
+              "fs-write",
+              "fs-deny",
+              "network-none",
+              "network-direct",
+              "network-mediated",
+              "process-tree",
+              "root-ephemeral-write",
+              "network-require-tls-sni",
+              "network-private-addresses",
+              "fs-protect-create"
+            ]
+          }
+        },
+        "supported": {
+          "type": "boolean"
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z_]+$"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "blocked": {
+      "type": "boolean"
+    }
+  }
+}

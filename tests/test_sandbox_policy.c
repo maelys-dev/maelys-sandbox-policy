@@ -509,6 +509,15 @@ static void test_absent_deny(void) {
   CHECK(maelys_sandbox_policy_plan_rule_count(p) == 0u);
   CHECK(!(maelys_sandbox_policy_plan_required_capabilities(p) &
           MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE));
+  CHECK(maelys_sandbox_policy_plan_omitted_rule_count(p) == 1u);
+  maelys_sandbox_policy_omitted_rule_view_t omitted;
+  CHECK_OK(maelys_sandbox_policy_plan_omitted_rule_at(p, 0, &omitted));
+  CHECK(omitted.access == MAELYS_MIR_FS_WRITE &&
+        omitted.root == MAELYS_MIR_ROOT_WORKSPACE &&
+        strcmp(omitted.relative, "build") == 0 &&
+        strcmp(omitted.host_root, resolved_root) == 0);
+  CHECK(maelys_sandbox_policy_plan_omitted_rule_at(p, 1, &omitted) ==
+        MAELYS_MIR_ERR_ARGUMENT);
   maelys_sandbox_policy_plan_destroy(p);
   maelys_mir_destroy(m);
 

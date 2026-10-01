@@ -261,16 +261,46 @@ static const char *const capability_choices[] = {
     "process-tree",     "root-ephemeral-write", "network-require-tls-sni",
     "network-private-addresses", "fs-protect-create", NULL};
 
+#define CAPABILITY_CHECK_OPTIONS                                                \
+  {MAELYS_CLI_FLAG("check",                                                     \
+                   "Compare the requirements with the capabilities given "     \
+                   "by --available, none if it is absent; exit 2 when "        \
+                   "some are missing.")},                                       \
+  {MAELYS_CLI_CHOICE("available",                                               \
+                     "Capability a backend is declared to offer; repeatable.", \
+                     capability_choices),                                       \
+   .value_name = "CAPABILITY", .repeatable = 1, .depends_on = "check"}
+
 static const maelys_cli_option_t capabilities_options[] = {
-    {MAELYS_CLI_FLAG("check",
-                     "Compare the requirements with the capabilities given "
-                     "by --available, none if it is absent; exit 2 when "
-                     "some are missing.")},
-    {MAELYS_CLI_CHOICE("available",
-                       "Capability a backend is declared to offer; repeatable.",
-                       capability_choices),
-     .value_name = "CAPABILITY", .repeatable = 1, .depends_on = "check"},
+    CAPABILITY_CHECK_OPTIONS,
 };
+
+/* The set --available declares. On failure it has replied and returns
+ * nonzero. */
+static int declared_capabilities(maelys_cli_context_t *context,
+                                 maelys_sandbox_policy_capabilities_t *out) {
+  *out = 0;
+  size_t given = maelys_cli_option_count(context, "available");
+  for (size_t i = 0u; i < given; ++i) {
+    const char *name = maelys_cli_option_at(context, "available", i);
+    maelys_sandbox_policy_capabilities_t bit = 0;
+    for (unsigned b = 0; b < 64u && !bit; ++b) {
+      const char *known =
+          maelys_sandbox_policy_capability_name(UINT64_C(1) << b);
+      if (known && strcmp(known, name) == 0)
+        bit = UINT64_C(1) << b;
+    }
+    if (!bit) {
+      (void)maelys_cli_fail(context, MAELYS_CLI_CODE_UNEXPECTED, NULL,
+                            "The catalog offers %s, which the library does "
+                            "not name.",
+                            name);
+      return 1;
+    }
+    *out |= bit;
+  }
+  return 0;
+}
 
 static void write_capabilities(maelys_cli_json_writer_t *data, const char *key,
                                maelys_sandbox_policy_capabilities_t set) {
@@ -309,23 +339,8 @@ static int command_capabilities(maelys_cli_context_t *context) {
   const char *path = maelys_cli_operand(context, 0u);
   int check = maelys_cli_flag(context, "check");
   maelys_sandbox_policy_capabilities_t available = 0;
-  size_t given = maelys_cli_option_count(context, "available");
-  for (size_t i = 0u; i < given; ++i) {
-    const char *name = maelys_cli_option_at(context, "available", i);
-    maelys_sandbox_policy_capabilities_t bit = 0;
-    for (unsigned b = 0; b < 64u && !bit; ++b) {
-      const char *known =
-          maelys_sandbox_policy_capability_name(UINT64_C(1) << b);
-      if (known && strcmp(known, name) == 0)
-        bit = UINT64_C(1) << b;
-    }
-    if (!bit)
-      return maelys_cli_fail(context, MAELYS_CLI_CODE_UNEXPECTED, NULL,
-                             "The catalog offers %s, which the library does "
-                             "not name.",
-                             name);
-    available |= bit;
-  }
+  if (declared_capabilities(context, &available))
+    return MAELYS_CLI_EXIT_FAILURE;
   maelys_mir_t *mir = NULL;
   if (decode_policy(context, path, &mir) != MAELYS_CLI_EXIT_OK)
     return MAELYS_CLI_EXIT_FAILURE;
@@ -379,6 +394,344 @@ static int command_capabilities(maelys_cli_context_t *context) {
   return maelys_cli_succeed_writer(
       context, &data, human,
       check && missing ? MAELYS_CLI_EXIT_VIOLATIONS : MAELYS_CLI_EXIT_OK);
+}
+
+/* ---- resolution on a host: shared by resolve and evaluate ------------------ */
+
+#define HOST_CONTEXT_OPTIONS                                                    \
+  {MAELYS_CLI_ABSOLUTE_PATH("workspace", "DIR",                                 \
+                            "Host directory the workspace root stands for.")}, \
+  {MAELYS_CLI_ABSOLUTE_PATH("temp", "DIR",                                      \
+                            "Host directory the temp root stands for.")},      \
+  {MAELYS_CLI_ABSOLUTE_PATH("minimal-root", "DIR",                              \
+                            "Host directory of the minimal runtime; "          \
+                            "repeatable."),                                     \
+   .repeatable = 1},                                                            \
+  {MAELYS_CLI_STRING("mediator", "ID",                                          \
+                     "Trusted network mediator, for a mediated policy.")}
+
+/* The trusted host context the options describe. On failure it has replied
+ * and returns NULL. */
+static maelys_sandbox_policy_host_t *host_context(maelys_cli_context_t *context) {
+  maelys_sandbox_policy_host_t *host = NULL;
+  char *error = NULL;
+  const char *option = "host context";
+  maelys_mir_result_t result = maelys_sandbox_policy_host_create(&host, &error);
+  if (result == MAELYS_MIR_OK && maelys_cli_option(context, "workspace")) {
+    option = "--workspace";
+    result = maelys_sandbox_policy_host_set_workspace(
+        host, maelys_cli_option(context, "workspace"), &error);
+  }
+  if (result == MAELYS_MIR_OK && maelys_cli_option(context, "temp")) {
+    option = "--temp";
+    result = maelys_sandbox_policy_host_set_temp(
+        host, maelys_cli_option(context, "temp"), &error);
+  }
+  size_t roots = maelys_cli_option_count(context, "minimal-root");
+  for (size_t i = 0u; result == MAELYS_MIR_OK && i < roots; ++i) {
+    option = "--minimal-root";
+    result = maelys_sandbox_policy_host_add_minimal_runtime_root(
+        host, maelys_cli_option_at(context, "minimal-root", i), &error);
+  }
+  if (result == MAELYS_MIR_OK && maelys_cli_option(context, "mediator")) {
+    option = "--mediator";
+    result = maelys_sandbox_policy_host_set_network_mediator(
+        host, maelys_cli_option(context, "mediator"), &error);
+  }
+  if (result == MAELYS_MIR_OK)
+    return host;
+  maelys_sandbox_policy_host_destroy(host);
+  (void)maelys_cli_fail(context,
+                        result == MAELYS_MIR_ERR_MEMORY
+                            ? MAELYS_CLI_CODE_UNEXPECTED
+                            : MAELYS_CLI_CODE_VALIDATION_FAILED,
+                        "Name an existing directory of this host.",
+                        "%s: %s: %s", option, maelys_mir_result_name(result),
+                        error ? error : "no diagnostic");
+  maelys_mir_error_free(error);
+  return NULL;
+}
+
+static void write_context(maelys_cli_json_writer_t *data,
+                          maelys_cli_context_t *context) {
+  (void)maelys_cli_json_key(data, "context");
+  (void)maelys_cli_json_begin_object(data);
+  if (maelys_cli_option(context, "workspace"))
+    (void)maelys_cli_json_key_string(data, "workspace",
+                                     maelys_cli_option(context, "workspace"));
+  if (maelys_cli_option(context, "temp"))
+    (void)maelys_cli_json_key_string(data, "temp",
+                                     maelys_cli_option(context, "temp"));
+  (void)maelys_cli_json_key(data, "minimalRoots");
+  (void)maelys_cli_json_begin_array(data);
+  size_t roots = maelys_cli_option_count(context, "minimal-root");
+  for (size_t i = 0u; i < roots; ++i)
+    (void)maelys_cli_json_string(
+        data, maelys_cli_option_at(context, "minimal-root", i));
+  (void)maelys_cli_json_end_array(data);
+  if (maelys_cli_option(context, "mediator"))
+    (void)maelys_cli_json_key_string(data, "mediator",
+                                     maelys_cli_option(context, "mediator"));
+  (void)maelys_cli_json_end_object(data);
+}
+
+static const char *fs_access_name(maelys_mir_fs_access_t access) {
+  return access == MAELYS_MIR_FS_READ    ? "read"
+         : access == MAELYS_MIR_FS_WRITE ? "write"
+                                         : "deny";
+}
+
+static const char *fs_scope_name(maelys_mir_path_scope_t scope) {
+  return scope == MAELYS_MIR_SCOPE_TREE ? "tree" : "exact";
+}
+
+static void write_resolved_rule(
+    maelys_cli_json_writer_t *data,
+    const maelys_sandbox_policy_resolved_rule_view_t *rule) {
+  (void)maelys_cli_json_begin_object(data);
+  (void)maelys_cli_json_key_string(data, "access", fs_access_name(rule->access));
+  (void)maelys_cli_json_key_string(data, "scope", fs_scope_name(rule->scope));
+  (void)maelys_cli_json_key_string(data, "path", rule->path);
+  (void)maelys_cli_json_key_string(
+      data, "missing",
+      rule->missing == MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE
+          ? "protect-create"
+          : "error");
+  (void)maelys_cli_json_end_object(data);
+}
+
+/* MIR_<RESULT>, the code a report gives a refusal of the library. */
+static void result_code(maelys_mir_result_t result, char *out, size_t size) {
+  const char *name = maelys_mir_result_name(result);
+  size_t used = (size_t)snprintf(out, size, "MIR_");
+  for (size_t i = 0u; name[i] && used + 1u < size; ++i, ++used)
+    out[used] = (char)(name[i] >= 'a' && name[i] <= 'z' ? name[i] - 'a' + 'A'
+                                                         : name[i]);
+  out[used] = '\0';
+}
+
+/* ---- resolve (report, exit 2 when something prevents the execution) -------- */
+
+static const maelys_cli_option_t resolve_options[] = {
+    HOST_CONTEXT_OPTIONS,
+    CAPABILITY_CHECK_OPTIONS,
+};
+
+static int command_resolve(maelys_cli_context_t *context) {
+  const char *path = maelys_cli_operand(context, 0u);
+  int check = maelys_cli_flag(context, "check");
+  maelys_sandbox_policy_capabilities_t available = 0;
+  if (declared_capabilities(context, &available))
+    return MAELYS_CLI_EXIT_FAILURE;
+  maelys_mir_t *mir = NULL;
+  if (decode_policy(context, path, &mir) != MAELYS_CLI_EXIT_OK)
+    return MAELYS_CLI_EXIT_FAILURE;
+  char digest[MAELYS_MIR_DIGEST_HEX_SIZE];
+  char *error = NULL;
+  maelys_mir_result_t result = maelys_mir_digest_hex(mir, digest, &error);
+  if (result != MAELYS_MIR_OK) {
+    maelys_mir_destroy(mir);
+    return fail_mir(context, result, error, path);
+  }
+  maelys_sandbox_policy_host_t *host = host_context(context);
+  if (!host) {
+    maelys_mir_destroy(mir);
+    return MAELYS_CLI_EXIT_FAILURE;
+  }
+  /* Resolve as if the backend offered everything: the report states what
+   * the policy needs here, and judges a declared backend apart. */
+  maelys_sandbox_policy_plan_t *plan = NULL;
+  result = maelys_sandbox_policy_compile(mir, host, UINT64_MAX, &plan, &error);
+  maelys_sandbox_policy_host_destroy(host);
+  if (result == MAELYS_MIR_ERR_MEMORY) {
+    maelys_mir_destroy(mir);
+    return fail_mir(context, result, error, path);
+  }
+  maelys_sandbox_policy_capabilities_t required =
+      plan ? maelys_sandbox_policy_plan_required_capabilities(plan)
+           : maelys_sandbox_policy_required_capabilities(mir);
+  maelys_sandbox_policy_capabilities_t missing = required & ~available;
+  maelys_mir_destroy(mir);
+  int blocked = !plan || (check && missing);
+
+  maelys_cli_json_writer_t data;
+  maelys_cli_json_writer_init(&data);
+  (void)maelys_cli_json_begin_object(&data);
+  (void)maelys_cli_json_key_string(&data, "policy", path);
+  (void)maelys_cli_json_key_string(&data, "digest", digest);
+  (void)maelys_cli_json_key_string(&data, "scope", "host");
+  (void)maelys_cli_json_key_unsigned(&data, "permissionContract",
+                                     MAELYS_SANDBOX_POLICY_PERMISSION_CONTRACT);
+  write_context(&data, context);
+  (void)maelys_cli_json_key_boolean(&data, "resolved", plan != NULL);
+  (void)maelys_cli_json_key(&data, "rules");
+  (void)maelys_cli_json_begin_array(&data);
+  for (size_t i = 0u; i < maelys_sandbox_policy_plan_rule_count(plan); ++i) {
+    maelys_sandbox_policy_resolved_rule_view_t rule;
+    if (maelys_sandbox_policy_plan_rule_at(plan, i, &rule) == MAELYS_MIR_OK)
+      write_resolved_rule(&data, &rule);
+  }
+  (void)maelys_cli_json_end_array(&data);
+  (void)maelys_cli_json_key(&data, "omitted");
+  (void)maelys_cli_json_begin_array(&data);
+  for (size_t i = 0u; i < maelys_sandbox_policy_plan_omitted_rule_count(plan);
+       ++i) {
+    static const char *const roots[] = {"", "minimal-runtime", "workspace",
+                                        "temp", "host"};
+    maelys_sandbox_policy_omitted_rule_view_t rule;
+    if (maelys_sandbox_policy_plan_omitted_rule_at(plan, i, &rule) !=
+        MAELYS_MIR_OK)
+      continue;
+    (void)maelys_cli_json_begin_object(&data);
+    (void)maelys_cli_json_key_string(&data, "access",
+                                     fs_access_name(rule.access));
+    (void)maelys_cli_json_key_string(&data, "scope", fs_scope_name(rule.scope));
+    (void)maelys_cli_json_key_string(&data, "root", roots[rule.root]);
+    (void)maelys_cli_json_key_string(&data, "relative", rule.relative);
+    if (rule.host_root)
+      (void)maelys_cli_json_key_string(&data, "hostRoot", rule.host_root);
+    (void)maelys_cli_json_key_string(&data, "reason", "absent-grant");
+    (void)maelys_cli_json_end_object(&data);
+  }
+  (void)maelys_cli_json_end_array(&data);
+  (void)maelys_cli_json_key(&data, "capabilities");
+  (void)maelys_cli_json_begin_object(&data);
+  /* Without a plan only the MIR speaks: resolution may have asked more. */
+  (void)maelys_cli_json_key_string(&data, "from", plan ? "plan" : "mir");
+  write_capabilities(&data, "required", required);
+  (void)maelys_cli_json_key_boolean(&data, "checked", check);
+  if (check) {
+    write_capabilities(&data, "available", available);
+    write_capabilities(&data, "missing", missing);
+    (void)maelys_cli_json_key_boolean(&data, "supported", missing == 0);
+  }
+  (void)maelys_cli_json_end_object(&data);
+  (void)maelys_cli_json_key(&data, "blockers");
+  (void)maelys_cli_json_begin_array(&data);
+  if (!plan) {
+    char code[32];
+    result_code(result, code, sizeof(code));
+    (void)maelys_cli_json_begin_object(&data);
+    (void)maelys_cli_json_key_string(&data, "code", code);
+    (void)maelys_cli_json_key_string(&data, "message",
+                                     error ? error : "no diagnostic");
+    (void)maelys_cli_json_end_object(&data);
+  }
+  if (check && missing) {
+    char names[512], message[600];
+    (void)list_capabilities(missing, names, sizeof(names));
+    (void)snprintf(message, sizeof(message),
+                   "the declared backend lacks: %s", names);
+    (void)maelys_cli_json_begin_object(&data);
+    (void)maelys_cli_json_key_string(&data, "code", "CAPABILITIES_MISSING");
+    (void)maelys_cli_json_key_string(&data, "message", message);
+    (void)maelys_cli_json_end_object(&data);
+  }
+  (void)maelys_cli_json_end_array(&data);
+  (void)maelys_cli_json_key_boolean(&data, "blocked", blocked);
+  (void)maelys_cli_json_end_object(&data);
+  maelys_mir_error_free(error);
+  maelys_sandbox_policy_plan_destroy(plan);
+  return maelys_cli_succeed_writer(
+      context, &data, NULL,
+      blocked ? MAELYS_CLI_EXIT_VIOLATIONS : MAELYS_CLI_EXIT_OK);
+}
+
+/* ---- evaluate (what the resolved plan grants on one path) ------------------ */
+
+static const maelys_cli_option_t evaluate_options[] = {
+    {MAELYS_CLI_ABSOLUTE_PATH("path", "PATH",
+                              "Resolved absolute path to evaluate, taken as "
+                              "written: no link is followed."),
+     .required = 1},
+    HOST_CONTEXT_OPTIONS,
+};
+
+static int command_evaluate(maelys_cli_context_t *context) {
+  const char *path = maelys_cli_operand(context, 0u);
+  const char *target = maelys_cli_option(context, "path");
+  maelys_mir_t *mir = NULL;
+  if (decode_policy(context, path, &mir) != MAELYS_CLI_EXIT_OK)
+    return MAELYS_CLI_EXIT_FAILURE;
+  char digest[MAELYS_MIR_DIGEST_HEX_SIZE];
+  char *error = NULL;
+  maelys_mir_result_t result = maelys_mir_digest_hex(mir, digest, &error);
+  if (result != MAELYS_MIR_OK) {
+    maelys_mir_destroy(mir);
+    return fail_mir(context, result, error, path);
+  }
+  maelys_sandbox_policy_host_t *host = host_context(context);
+  if (!host) {
+    maelys_mir_destroy(mir);
+    return MAELYS_CLI_EXIT_FAILURE;
+  }
+  maelys_sandbox_policy_plan_t *plan = NULL;
+  result = maelys_sandbox_policy_compile(mir, host, UINT64_MAX, &plan, &error);
+  maelys_sandbox_policy_host_destroy(host);
+  maelys_mir_destroy(mir);
+  if (result != MAELYS_MIR_OK) {
+    /* No plan, no answer: a policy that does not resolve grants nothing
+     * that could be evaluated. resolve reports why. */
+    int exit_code = maelys_cli_fail(
+        context,
+        result == MAELYS_MIR_ERR_MEMORY     ? MAELYS_CLI_CODE_UNEXPECTED
+        : result == MAELYS_MIR_ERR_CONFLICT ? MAELYS_CLI_CODE_POLICY_FAILED
+                                            : MAELYS_CLI_CODE_PRECONDITION_FAILED,
+        "Run 'maelys-policy resolve' with the same context for the report.",
+        "%s does not resolve on this host: %s: %s", path,
+        maelys_mir_result_name(result), error ? error : "no diagnostic");
+    maelys_mir_error_free(error);
+    return exit_code;
+  }
+  maelys_sandbox_policy_evaluation_t evaluation;
+  result = maelys_sandbox_policy_plan_evaluate(plan, target, &evaluation, &error);
+  if (result != MAELYS_MIR_OK) {
+    maelys_sandbox_policy_plan_destroy(plan);
+    int exit_code = maelys_cli_fail(
+        context, MAELYS_CLI_CODE_VALIDATION_FAILED,
+        "Give the path as the plan names paths: absolute and canonical.",
+        "--path %s: %s", target, error ? error : "no diagnostic");
+    maelys_mir_error_free(error);
+    return exit_code;
+  }
+  const char *permission =
+      maelys_sandbox_policy_permission_name(evaluation.permission);
+  const char *reason = maelys_sandbox_policy_reason_name(evaluation.reason);
+  maelys_sandbox_policy_resolved_rule_view_t rule;
+  int decided = evaluation.decisive_rule != SIZE_MAX &&
+                maelys_sandbox_policy_plan_rule_at(plan, evaluation.decisive_rule,
+                                                   &rule) == MAELYS_MIR_OK;
+
+  maelys_cli_json_writer_t data;
+  maelys_cli_json_writer_init(&data);
+  (void)maelys_cli_json_begin_object(&data);
+  (void)maelys_cli_json_key_string(&data, "policy", path);
+  (void)maelys_cli_json_key_string(&data, "digest", digest);
+  (void)maelys_cli_json_key_string(&data, "scope", "host");
+  (void)maelys_cli_json_key_unsigned(&data, "permissionContract",
+                                     MAELYS_SANDBOX_POLICY_PERMISSION_CONTRACT);
+  write_context(&data, context);
+  (void)maelys_cli_json_key_string(&data, "path", target);
+  (void)maelys_cli_json_key_string(&data, "permission", permission);
+  (void)maelys_cli_json_key_string(&data, "reason", reason);
+  (void)maelys_cli_json_key_unsigned(&data, "applicableRules",
+                                     (uint64_t)evaluation.applicable_rule_count);
+  if (decided) {
+    (void)maelys_cli_json_key(&data, "decisiveRule");
+    write_resolved_rule(&data, &rule);
+  }
+  (void)maelys_cli_json_end_object(&data);
+  char human[4400];
+  if (decided)
+    (void)snprintf(human, sizeof(human), "%s (%s): %s %s %s", permission, reason,
+                   fs_access_name(rule.access), fs_scope_name(rule.scope),
+                   rule.path);
+  else
+    (void)snprintf(human, sizeof(human), "%s (%s)", permission, reason);
+  int exit_code =
+      maelys_cli_succeed_writer(context, &data, human, MAELYS_CLI_EXIT_OK);
+  maelys_sandbox_policy_plan_destroy(plan);
+  return exit_code;
 }
 
 /* ---- validate (report, exit 2 on violation) -------------------------------- */
@@ -531,6 +884,19 @@ static const maelys_cli_command_t commands[] = {
      MAELYS_CLI_OPERANDS(policy_operands),
      MAELYS_CLI_OPTIONS(capabilities_options),
      MAELYS_CLI_SCHEMA(policy_capabilities_schema)},
+    {MAELYS_CLI_READ("resolve", "resolve",
+                     "Resolve a policy on this host and report its rules, "
+                     "what was omitted and what prevents the execution; "
+                     "exit 2 when something does.",
+                     command_resolve),
+     MAELYS_CLI_OPERANDS(policy_operands), MAELYS_CLI_OPTIONS(resolve_options),
+     MAELYS_CLI_SCHEMA(policy_resolve_schema)},
+    {MAELYS_CLI_READ("evaluate", "evaluate",
+                     "State what the policy, resolved on this host, grants "
+                     "on one path, and the rule that decides.",
+                     command_evaluate),
+     MAELYS_CLI_OPERANDS(policy_operands), MAELYS_CLI_OPTIONS(evaluate_options),
+     MAELYS_CLI_SCHEMA(policy_evaluate_schema)},
     {MAELYS_CLI_READ("validate", "validate",
                      "Check that a file is canonical MIR; exit 2 when it is not.",
                      command_validate),

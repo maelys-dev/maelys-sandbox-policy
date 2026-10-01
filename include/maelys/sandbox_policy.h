@@ -139,6 +139,25 @@ const char *
 maelys_sandbox_policy_permission_name(maelys_sandbox_policy_permission_t value);
 const char *
 maelys_sandbox_policy_reason_name(maelys_sandbox_policy_reason_t value);
+/* A grant that resolution left out of the plan: its target was absent and
+ * its rule said missing: skip. It grants nothing; it is reported so that a
+ * reader of the plan knows the rule was seen. A deny is never omitted.
+ * host_root is the resolved root the path was looked up under, NULL for a
+ * host path; one MIR rule on minimal-runtime may be omitted under some
+ * roots and kept under others. */
+typedef struct maelys_sandbox_policy_omitted_rule_view {
+  maelys_mir_fs_access_t access;
+  maelys_mir_path_scope_t scope;
+  maelys_mir_path_root_t root;
+  const char *relative;
+  const char *host_root;
+} maelys_sandbox_policy_omitted_rule_view_t;
+
+size_t maelys_sandbox_policy_plan_omitted_rule_count(
+    const maelys_sandbox_policy_plan_t *plan);
+maelys_mir_result_t maelys_sandbox_policy_plan_omitted_rule_at(
+    const maelys_sandbox_policy_plan_t *plan, size_t index,
+    maelys_sandbox_policy_omitted_rule_view_t *out_rule);
 maelys_mir_network_mode_t
 maelys_sandbox_policy_plan_network(const maelys_sandbox_policy_plan_t *plan);
 maelys_mir_root_mode_t maelys_sandbox_policy_plan_root_mode(

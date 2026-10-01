@@ -159,3 +159,104 @@ while read -r capability; do
   "$cli" capabilities "$tmp_dir/policy.mir" --check --available "$capability" >/dev/null 2>&1 || status=$?
   test "$status" = 2 || fail "capability $capability is offered but not known to the library"
 done <"$tmp_dir/choices.txt"
+
+# ---- resolve and evaluate: the policy on one host -----------------------------
+mkdir -p "$tmp_dir/ws/src" "$tmp_dir/runtime"
+workspace=$(cd "$tmp_dir/ws" && pwd -P)
+runtime=$(cd "$tmp_dir/runtime" && pwd -P)
+# examples/workspace.json in a workspace with neither build/ nor .git: the
+# absent grant is omitted and reported, the absent deny is kept and asks for
+# fs-protect-create.
+"$cli" resolve "$tmp_dir/policy.mir" --workspace "$tmp_dir/ws" --minimal-root "$tmp_dir/runtime" \
+  --format json --compact >"$tmp_dir/resolve.json"
+grep -q '"resolved":true' "$tmp_dir/resolve.json" || fail 'resolve'
+grep -q "{\"access\":\"deny\",\"scope\":\"tree\",\"path\":\"$workspace/.git\",\"missing\":\"protect-create\"}" \
+  "$tmp_dir/resolve.json" || fail 'resolve does not keep the absent deny'
+grep -q '"omitted":\[{"access":"write","scope":"tree","root":"workspace","relative":"build"' \
+  "$tmp_dir/resolve.json" || fail 'resolve does not report the omitted grant'
+grep -q '"from":"plan","required":\[.*"fs-protect-create"\]' "$tmp_dir/resolve.json" ||
+  fail 'resolve does not name the capability resolution discovered'
+grep -q '"blocked":false' "$tmp_dir/resolve.json" || fail 'resolve without --check judges no backend'
+# Checked against a backend without it, the report names what prevents the
+# execution and exits 2; the policy is not degraded.
+status=0
+"$cli" resolve "$tmp_dir/policy.mir" --workspace "$tmp_dir/ws" --minimal-root "$tmp_dir/runtime" \
+  --check --available fs-read --available fs-write --available fs-deny \
+  --available network-none --available process-tree \
+  --format json --compact >"$tmp_dir/resolve-check.json" || status=$?
+test "$status" = 2 || fail "resolve against a backend lacking fs-protect-create exited $status, not 2"
+grep -q '"missing":\["fs-protect-create"\]' "$tmp_dir/resolve-check.json" || fail 'resolve missing set'
+grep -q '"code":"CAPABILITIES_MISSING"' "$tmp_dir/resolve-check.json" || fail 'resolve blocker'
+grep -q '"missing":"protect-create"' "$tmp_dir/resolve-check.json" || fail 'resolve dropped a rule to pass'
+mkdir "$tmp_dir/ws/.git"
+"$cli" resolve "$tmp_dir/policy.mir" --workspace "$tmp_dir/ws" --minimal-root "$tmp_dir/runtime" \
+  --check --available fs-read --available fs-write --available fs-deny \
+  --available network-none --available process-tree \
+  --format json --compact >"$tmp_dir/resolve-ok.json" || fail 'resolve with .git present'
+grep -q '"blocked":false' "$tmp_dir/resolve-ok.json" || fail 'resolve verdict with .git present'
+# A policy that does not resolve is a report with a blocker, not an error.
+status=0
+"$cli" resolve "$tmp_dir/policy.mir" --minimal-root "$tmp_dir/runtime" --format json --compact \
+  >"$tmp_dir/resolve-noroot.json" || status=$?
+test "$status" = 2 || fail "resolve without a workspace exited $status, not 2"
+grep -q '"resolved":false' "$tmp_dir/resolve-noroot.json" || fail 'unresolved report'
+grep -q '"code":"MIR_UNSUPPORTED"' "$tmp_dir/resolve-noroot.json" || fail 'unresolved blocker'
+grep -q '"from":"mir"' "$tmp_dir/resolve-noroot.json" || fail 'unresolved capabilities source'
+cat >"$tmp_dir/conflict.json" <<'JSON'
+{"formatVersion":3,
+ "filesystem":{"default":"deny","rules":[
+   {"access":"write","path":{"root":"workspace","relative":""}},
+   {"access":"read","path":{"root":"workspace","relative":"src"}}]},
+ "network":{"mode":"none"},"root":{"mode":"read-only"},
+ "process":{"treeConfinement":"disabled"}}
+JSON
+"$cli" compile "$tmp_dir/conflict.json" --output "$tmp_dir/conflict.mir" --apply >/dev/null
+status=0
+"$cli" resolve "$tmp_dir/conflict.mir" --workspace "$tmp_dir/ws" --format json --compact \
+  >"$tmp_dir/resolve-conflict.json" || status=$?
+test "$status" = 2 || fail "resolve of a precedence conflict exited $status, not 2"
+grep -q '"code":"MIR_CONFLICT"' "$tmp_dir/resolve-conflict.json" || fail 'conflict blocker'
+grep -q 'before=read after=read-write' "$tmp_dir/resolve-conflict.json" || fail 'conflict witness'
+status=0
+"$cli" resolve "$tmp_dir/policy.mir" --workspace "$tmp_dir/absent" --format json --compact \
+  2>"$tmp_dir/resolve-badroot.json" >/dev/null || status=$?
+test "$status" = 1 || fail "resolve with an absent --workspace exited $status, not 1"
+grep -q '"code":"VALIDATION_FAILED"' "$tmp_dir/resolve-badroot.json" || fail 'absent --workspace code'
+
+evaluate() {
+  "$cli" evaluate "$tmp_dir/policy.mir" --workspace "$tmp_dir/ws" \
+    --minimal-root "$tmp_dir/runtime" --path "$1" --format json --compact
+}
+evaluate "$workspace/src/main.c" >"$tmp_dir/eval-read.json"
+grep -q '"permission":"read","reason":"read-rule"' "$tmp_dir/eval-read.json" || fail 'evaluate read'
+grep -q "\"decisiveRule\":{\"access\":\"read\",\"scope\":\"tree\",\"path\":\"$workspace\"" \
+  "$tmp_dir/eval-read.json" || fail 'evaluate decisive rule'
+evaluate "$workspace/.git/config" | grep -q '"permission":"none","reason":"deny-rule"' ||
+  fail 'evaluate deny'
+evaluate "$runtime/lib" | grep -q '"permission":"read"' || fail 'evaluate minimal runtime'
+evaluate /etc/hosts >"$tmp_dir/eval-default.json"
+grep -q '"permission":"none","reason":"default-deny","applicableRules":0}' "$tmp_dir/eval-default.json" ||
+  fail 'evaluate default deny'
+test "$("$cli" evaluate "$tmp_dir/policy.mir" --workspace "$tmp_dir/ws" \
+  --minimal-root "$tmp_dir/runtime" --path "$workspace/src" --field permission)" = read ||
+  fail 'evaluate --field permission'
+status=0
+evaluate "$workspace/src/../.git" 2>"$tmp_dir/eval-dots.json" >/dev/null || status=$?
+test "$status" = 1 || fail 'evaluate accepted a non-canonical path'
+grep -q '"code":"VALIDATION_FAILED"' "$tmp_dir/eval-dots.json" || fail 'non-canonical path code'
+status=0
+"$cli" evaluate "$tmp_dir/policy.mir" --workspace "$tmp_dir/ws" --path relative/path \
+  --format json --compact 2>"$tmp_dir/eval-relative.json" >/dev/null || status=$?
+test "$status" = 1 || fail 'evaluate accepted a relative path'
+grep -q '"code":"VALIDATION_FAILED"' "$tmp_dir/eval-relative.json" || fail 'relative path code'
+status=0
+"$cli" evaluate "$tmp_dir/conflict.mir" --workspace "$tmp_dir/ws" --path "$workspace/src" \
+  --format json --compact 2>"$tmp_dir/eval-conflict.json" >"$tmp_dir/eval-conflict.out" || status=$?
+test "$status" = 1 || fail "evaluate of a conflicting policy exited $status, not 1"
+grep -q '"code":"POLICY_FAILED"' "$tmp_dir/eval-conflict.json" || fail 'evaluate conflict code'
+test ! -s "$tmp_dir/eval-conflict.out" || fail 'evaluate answered for a policy that does not resolve'
+status=0
+"$cli" evaluate "$tmp_dir/policy.mir" --minimal-root "$tmp_dir/runtime" --path /etc/hosts \
+  --format json --compact 2>"$tmp_dir/eval-noroot.json" >/dev/null || status=$?
+test "$status" = 1 || fail 'evaluate without the workspace it needs'
+grep -q '"code":"PRECONDITION_FAILED"' "$tmp_dir/eval-noroot.json" || fail 'evaluate missing root code'

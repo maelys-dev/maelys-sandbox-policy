@@ -1,0 +1,110 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "policy",
+    "digest",
+    "scope",
+    "permissionContract",
+    "context",
+    "path",
+    "permission",
+    "reason",
+    "applicableRules"
+  ],
+  "properties": {
+    "policy": {
+      "type": "string"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "scope": {
+      "const": "host"
+    },
+    "permissionContract": {
+      "const": 2
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimalRoots"
+      ],
+      "properties": {
+        "workspace": {
+          "type": "string"
+        },
+        "temp": {
+          "type": "string"
+        },
+        "minimalRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mediator": {
+          "type": "string"
+        }
+      }
+    },
+    "path": {
+      "type": "string"
+    },
+    "permission": {
+      "enum": [
+        "none",
+        "read",
+        "read-write"
+      ]
+    },
+    "reason": {
+      "enum": [
+        "default-deny",
+        "deny-rule",
+        "write-rule",
+        "read-rule"
+      ]
+    },
+    "applicableRules": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "decisiveRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "access",
+        "scope",
+        "path",
+        "missing"
+      ],
+      "properties": {
+        "access": {
+          "enum": [
+            "read",
+            "write",
+            "deny"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "exact",
+            "tree"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "missing": {
+          "enum": [
+            "error",
+            "protect-create"
+          ]
+        }
+      }
+    }
+  }
+}

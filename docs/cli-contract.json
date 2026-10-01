@@ -745,6 +745,574 @@
           },
           "external": false,
           "hidden": false,
+          "id": "resolve",
+          "input": {
+            "constraints": [
+              {
+                "kind": "requires",
+                "options": [
+                  "--available",
+                  "--check"
+                ]
+              }
+            ],
+            "operands": [
+              {
+                "name": "POLICY",
+                "required": true,
+                "summary": "Canonical MIR file.",
+                "variadic": false
+              }
+            ],
+            "options": [
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--workspace",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory the workspace root stands for."
+              },
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--temp",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory the temp root stands for."
+              },
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--minimal-root",
+                "repeatable": true,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory of the minimal runtime; repeatable."
+              },
+              {
+                "argument": {
+                  "name": "ID",
+                  "type": "string"
+                },
+                "conflictsWith": [],
+                "long": "--mediator",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Trusted network mediator, for a mediated policy."
+              },
+              {
+                "conflictsWith": [],
+                "long": "--check",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Compare the requirements with the capabilities given by --available, none if it is absent; exit 2 when some are missing."
+              },
+              {
+                "argument": {
+                  "choices": [
+                    "fs-read",
+                    "fs-write",
+                    "fs-deny",
+                    "network-none",
+                    "network-direct",
+                    "network-mediated",
+                    "process-tree",
+                    "root-ephemeral-write",
+                    "network-require-tls-sni",
+                    "network-private-addresses",
+                    "fs-protect-create"
+                  ],
+                  "name": "CAPABILITY",
+                  "type": "choice"
+                },
+                "conflictsWith": [],
+                "long": "--available",
+                "repeatable": true,
+                "required": false,
+                "requires": [
+                  "--check"
+                ],
+                "summary": "Capability a backend is declared to offer; repeatable."
+              }
+            ],
+            "passthrough": false,
+            "synopsis": "resolve POLICY [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID] [--check] [--available CAPABILITY...]"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "blocked": {
+                "type": "boolean"
+              },
+              "blockers": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "pattern": "^[A-Z_]+$",
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "capabilities": {
+                "additionalProperties": false,
+                "properties": {
+                  "available": {
+                    "items": {
+                      "enum": [
+                        "fs-read",
+                        "fs-write",
+                        "fs-deny",
+                        "network-none",
+                        "network-direct",
+                        "network-mediated",
+                        "process-tree",
+                        "root-ephemeral-write",
+                        "network-require-tls-sni",
+                        "network-private-addresses",
+                        "fs-protect-create"
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "checked": {
+                    "type": "boolean"
+                  },
+                  "from": {
+                    "enum": [
+                      "plan",
+                      "mir"
+                    ]
+                  },
+                  "missing": {
+                    "items": {
+                      "enum": [
+                        "fs-read",
+                        "fs-write",
+                        "fs-deny",
+                        "network-none",
+                        "network-direct",
+                        "network-mediated",
+                        "process-tree",
+                        "root-ephemeral-write",
+                        "network-require-tls-sni",
+                        "network-private-addresses",
+                        "fs-protect-create"
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "required": {
+                    "items": {
+                      "enum": [
+                        "fs-read",
+                        "fs-write",
+                        "fs-deny",
+                        "network-none",
+                        "network-direct",
+                        "network-mediated",
+                        "process-tree",
+                        "root-ephemeral-write",
+                        "network-require-tls-sni",
+                        "network-private-addresses",
+                        "fs-protect-create"
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "supported": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "from",
+                  "required",
+                  "checked"
+                ],
+                "type": "object"
+              },
+              "context": {
+                "additionalProperties": false,
+                "properties": {
+                  "mediator": {
+                    "type": "string"
+                  },
+                  "minimalRoots": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "temp": {
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "minimalRoots"
+                ],
+                "type": "object"
+              },
+              "digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "omitted": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "access": {
+                      "enum": [
+                        "read",
+                        "write"
+                      ]
+                    },
+                    "hostRoot": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "const": "absent-grant"
+                    },
+                    "relative": {
+                      "type": "string"
+                    },
+                    "root": {
+                      "enum": [
+                        "minimal-runtime",
+                        "workspace",
+                        "temp",
+                        "host"
+                      ]
+                    },
+                    "scope": {
+                      "enum": [
+                        "exact",
+                        "tree"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "access",
+                    "scope",
+                    "root",
+                    "relative",
+                    "reason"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "permissionContract": {
+                "const": 2
+              },
+              "policy": {
+                "type": "string"
+              },
+              "resolved": {
+                "type": "boolean"
+              },
+              "rules": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "access": {
+                      "enum": [
+                        "read",
+                        "write",
+                        "deny"
+                      ]
+                    },
+                    "missing": {
+                      "enum": [
+                        "error",
+                        "protect-create"
+                      ]
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "enum": [
+                        "exact",
+                        "tree"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "access",
+                    "scope",
+                    "path",
+                    "missing"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "scope": {
+                "const": "host"
+              }
+            },
+            "required": [
+              "policy",
+              "digest",
+              "scope",
+              "permissionContract",
+              "context",
+              "resolved",
+              "rules",
+              "omitted",
+              "capabilities",
+              "blockers",
+              "blocked"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "resolve"
+          ],
+          "purpose": "Resolve a policy on this host and report its rules, what was omitted and what prevents the execution; exit 2 when something does.",
+          "usage": "resolve POLICY [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID] [--check] [--available CAPABILITY...]"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "evaluate",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "name": "POLICY",
+                "required": true,
+                "summary": "Canonical MIR file.",
+                "variadic": false
+              }
+            ],
+            "options": [
+              {
+                "argument": {
+                  "name": "PATH",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--path",
+                "repeatable": false,
+                "required": true,
+                "requires": [],
+                "summary": "Resolved absolute path to evaluate, taken as written: no link is followed."
+              },
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--workspace",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory the workspace root stands for."
+              },
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--temp",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory the temp root stands for."
+              },
+              {
+                "argument": {
+                  "name": "DIR",
+                  "type": "absolute-path"
+                },
+                "conflictsWith": [],
+                "long": "--minimal-root",
+                "repeatable": true,
+                "required": false,
+                "requires": [],
+                "summary": "Host directory of the minimal runtime; repeatable."
+              },
+              {
+                "argument": {
+                  "name": "ID",
+                  "type": "string"
+                },
+                "conflictsWith": [],
+                "long": "--mediator",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Trusted network mediator, for a mediated policy."
+              }
+            ],
+            "passthrough": false,
+            "synopsis": "evaluate POLICY --path PATH [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID]"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "applicableRules": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "context": {
+                "additionalProperties": false,
+                "properties": {
+                  "mediator": {
+                    "type": "string"
+                  },
+                  "minimalRoots": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "temp": {
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "minimalRoots"
+                ],
+                "type": "object"
+              },
+              "decisiveRule": {
+                "additionalProperties": false,
+                "properties": {
+                  "access": {
+                    "enum": [
+                      "read",
+                      "write",
+                      "deny"
+                    ]
+                  },
+                  "missing": {
+                    "enum": [
+                      "error",
+                      "protect-create"
+                    ]
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "enum": [
+                      "exact",
+                      "tree"
+                    ]
+                  }
+                },
+                "required": [
+                  "access",
+                  "scope",
+                  "path",
+                  "missing"
+                ],
+                "type": "object"
+              },
+              "digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "permission": {
+                "enum": [
+                  "none",
+                  "read",
+                  "read-write"
+                ]
+              },
+              "permissionContract": {
+                "const": 2
+              },
+              "policy": {
+                "type": "string"
+              },
+              "reason": {
+                "enum": [
+                  "default-deny",
+                  "deny-rule",
+                  "write-rule",
+                  "read-rule"
+                ]
+              },
+              "scope": {
+                "const": "host"
+              }
+            },
+            "required": [
+              "policy",
+              "digest",
+              "scope",
+              "permissionContract",
+              "context",
+              "path",
+              "permission",
+              "reason",
+              "applicableRules"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "evaluate"
+          ],
+          "purpose": "State what the policy, resolved on this host, grants on one path, and the rule that decides.",
+          "usage": "evaluate POLICY --path PATH [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID]"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
           "id": "validate",
           "input": {
             "constraints": [],

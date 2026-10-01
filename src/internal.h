@@ -60,10 +60,21 @@ typedef struct maelys_sandbox_policy_resolved_rule {
   maelys_sandbox_policy_missing_t missing;
 } maelys_sandbox_policy_resolved_rule_t;
 
+typedef struct maelys_sandbox_policy_omitted_rule {
+  maelys_mir_fs_access_t access;
+  maelys_mir_path_scope_t scope;
+  maelys_mir_path_root_t root;
+  char *relative;
+  char *host_root;
+} maelys_sandbox_policy_omitted_rule_t;
+
 struct maelys_sandbox_policy_plan {
   maelys_sandbox_policy_resolved_rule_t *rules;
   size_t rule_count;
   size_t rule_capacity;
+  maelys_sandbox_policy_omitted_rule_t *omitted;
+  size_t omitted_count;
+  size_t omitted_capacity;
   maelys_mir_network_mode_t network;
   maelys_mir_root_mode_t root_mode;
   char *network_mediator;
