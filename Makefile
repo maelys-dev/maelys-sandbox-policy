@@ -38,7 +38,7 @@ MIR_OBJ := $(MIR_SRC:%.c=$(BUILD)/%.o)
 POLICY_OBJ := $(POLICY_SRC:%.c=$(BUILD)/%.o)
 
 .PHONY: all check bench clean asan ubsan tsan fuzz fuzz-build install wasm wasm-check reference-check conformance-check playground-dist \
-	check-dependencies check-cli-contract check-spec-contract agent-cli-check
+	check-dependencies check-cli-contract check-spec-contract agent-cli-check abi-check
 all: $(BUILD)/lib/libmaelys-mir.a $(BUILD)/lib/libmaelys-sandbox-policy.a $(BUILD)/bin/maelys-policy
 
 $(BUILD)/%.o: %.c
@@ -96,6 +96,28 @@ $(BUILD)/bin/maelys-policy: $(BUILD)/cli/maelys-policy.o $(BUILD)/generated/poli
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $^ -o $@
 
+# The two ABI numbers of each public header, held by the compiler. The floor
+# fragments declare again what the floor revision declared; the frozen
+# consumer switches over every public enumeration without a default.
+abi-check:
+	@$(CC) -Iinclude -Itests/public -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+		tests/public/abi_floor.c || \
+		{ echo "abi-check: a declaration of a floor revision changed or disappeared." >&2; \
+		  echo "  That is a break: raise the matching ..._ABI_COMPATIBLE_SINCE to the new" >&2; \
+		  echo "  ..._ABI_VERSION, regenerate the fragment with scripts/freeze_abi.py at the" >&2; \
+		  echo "  tag that publishes it, and give the break its own CHANGELOG.md line." >&2; exit 1; }
+	@$(CC) -Iinclude -std=c11 -Wall -Wextra -Werror -Werror=switch -fsyntax-only \
+		tests/public/frozen_enumerations.c || \
+		{ echo "abi-check: an enumerator was added to a public enumeration." >&2; \
+		  echo "  This breaks consumers that switch without a default under -Werror=switch." >&2; \
+		  echo "  If intended: add it to tests/public/frozen_enumerations.c, re-freeze the" >&2; \
+		  echo "  release named there, and write a Consumer notice line in CHANGELOG.md." >&2; exit 1; }
+	@grep -Eq '^#define MAELYS_MIR_ABI_VERSION [0-9]+u$$' include/maelys/mir.h && \
+	 grep -Eq '^#define MAELYS_MIR_ABI_COMPATIBLE_SINCE [0-9]+u$$' include/maelys/mir.h && \
+	 grep -Eq '^#define MAELYS_SANDBOX_POLICY_ABI_VERSION [0-9]+u$$' include/maelys/sandbox_policy.h && \
+	 grep -Eq '^#define MAELYS_SANDBOX_POLICY_ABI_COMPATIBLE_SINCE [0-9]+u$$' include/maelys/sandbox_policy.h || \
+		{ echo "abi-check: each ABI number must be a '#define NAME <digits>u' line of its own, which consumers read by grep." >&2; exit 1; }
+
 # The contract's own kit drives the built binary from the outside: describe,
 # every envelope and each command's declared output schema. It only reads.
 agent-cli-check: $(BUILD)/bin/maelys-policy check-spec-contract
@@ -133,6 +155,7 @@ check: all $(BUILD)/tests/test_mir $(BUILD)/tests/test_sandbox_policy $(BUILD)/t
 	sh tests/test_cli.sh $(BUILD)/bin/maelys-policy
 	sh tests/test_vectors.sh $(BUILD)/bin/maelys-policy
 	sh scripts/audit-boundaries.sh
+	$(MAKE) abi-check
 	$(MAKE) agent-cli-check
 
 wasm:

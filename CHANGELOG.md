@@ -1,7 +1,23 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — 2026-10-01
 
+- **ABI numbers, regularised.** Each public header now carries two numbers:
+  `..._ABI_VERSION`, raised by every change to the header, additions
+  included, and `..._ABI_COMPATIBLE_SINCE`, raised only by a break. Additions
+  were published without raising the first: the `_ex` accessors and
+  destination flags of 0.5.0 and `MAELYS_MIR_ERR_CONFLICT` of 0.6.0 under MIR
+  ABI 3, and `maelys_sandbox_policy_plan_contains()` of 0.7.0 under Sandbox
+  Policy ABI 5. One increment each settles it: `MAELYS_MIR_ABI_VERSION` is 4,
+  compatible since 3; `MAELYS_SANDBOX_POLICY_ABI_VERSION` is 6, compatible
+  since 5. Nothing is removed or changed: a consumer written for MIR 3 or
+  Sandbox Policy 5 is served as before. A consumer that needs what 0.5.0 to
+  0.8.0 added must require the new numbers, since an installed 0.4.x to 0.7.0
+  declares the old ones;
+- `make check` holds both numbers: `tests/public/abi-mir-3.h` and
+  `tests/public/abi-sandbox-policy-5.h` freeze the declarations of the floor
+  revisions, and `tests/public/frozen_enumerations.c` switches over every
+  public enumeration without a default;
 - add `maelys_sandbox_policy_plan_diff()` with `maelys-policy diff BEFORE
   AFTER [--check]`, and `maelys_sandbox_policy_plan_overlaps()` with
   `maelys-policy overlaps FIRST SECOND`. A diff lists the paths where what is

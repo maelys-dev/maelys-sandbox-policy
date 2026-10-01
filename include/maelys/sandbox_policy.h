@@ -10,7 +10,11 @@ extern "C" {
 typedef struct maelys_sandbox_policy_host maelys_sandbox_policy_host_t;
 typedef struct maelys_sandbox_policy_plan maelys_sandbox_policy_plan_t;
 
-#define MAELYS_SANDBOX_POLICY_ABI_VERSION 5u
+/* The revision of this header, raised by every change to it, and the oldest
+ * revision whose declarations all still hold unchanged. A consumer written
+ * for revision N is served when COMPATIBLE_SINCE <= N <= VERSION. */
+#define MAELYS_SANDBOX_POLICY_ABI_VERSION 6u
+#define MAELYS_SANDBOX_POLICY_ABI_COMPATIBLE_SINCE 5u
 /* The permission contract a SandboxPlan carries. Contract 2: a deny wins
  * over every overlapping grant, grants are additive, and a policy whose
  * permissions differ from the most-specific-wins order of contract 1 is

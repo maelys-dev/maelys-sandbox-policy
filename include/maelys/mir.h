@@ -9,7 +9,11 @@ extern "C" {
 #endif
 
 #define MAELYS_MIR_FORMAT_VERSION 3u
-#define MAELYS_MIR_ABI_VERSION 3u
+/* The revision of this header, raised by every change to it, and the oldest
+ * revision whose declarations all still hold unchanged. A consumer written
+ * for revision N is served when COMPATIBLE_SINCE <= N <= VERSION. */
+#define MAELYS_MIR_ABI_VERSION 4u
+#define MAELYS_MIR_ABI_COMPATIBLE_SINCE 3u
 #define MAELYS_MIR_DIGEST_HEX_SIZE 65u
 #define MAELYS_MIR_INSPECTION_FORMAT_VERSION 1u
 #define MAELYS_MIR_MAX_BYTES (1024u * 1024u)
