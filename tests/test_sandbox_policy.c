@@ -218,6 +218,124 @@ static void test_destination_flags_require_capabilities(void) {
   maelys_mir_error_free(e);
 }
 
+static maelys_mir_t *two_rules(maelys_mir_fs_access_t first_access,
+                               maelys_mir_path_root_t first_root,
+                               const char *first,
+                               maelys_mir_fs_access_t second_access,
+                               maelys_mir_path_root_t second_root,
+                               const char *second) {
+  maelys_mir_builder_t *b = NULL;
+  maelys_mir_t *m = NULL;
+  char *e = NULL;
+  CHECK_OK(maelys_mir_builder_create(&b, &e));
+  CHECK_OK(maelys_mir_builder_add_fs_rule(b, first_access, first_root, first,
+                                          MAELYS_MIR_SCOPE_TREE,
+                                          MAELYS_MIR_MISSING_ERROR, &e));
+  CHECK_OK(maelys_mir_builder_add_fs_rule(b, second_access, second_root, second,
+                                          MAELYS_MIR_SCOPE_TREE,
+                                          MAELYS_MIR_MISSING_ERROR, &e));
+  CHECK_OK(maelys_mir_builder_set_root_mode(b, MAELYS_MIR_ROOT_EPHEMERAL_WRITE,
+                                            &e));
+  CHECK_OK(maelys_mir_builder_build(b, &m, &e));
+  maelys_mir_builder_destroy(b);
+  maelys_mir_error_free(e);
+  return m;
+}
+
+static void expect_conflict(maelys_mir_t *m,
+                            const maelys_sandbox_policy_host_t *h,
+                            const char *before_after) {
+  maelys_sandbox_policy_plan_t *p = NULL;
+  char *e = NULL;
+  CHECK(maelys_sandbox_policy_compile(m, h, all_caps, &p, &e) ==
+        MAELYS_MIR_ERR_CONFLICT);
+  CHECK(p == NULL);
+  CHECK(e && strstr(e, "permission precedence conflict at /") != NULL);
+  CHECK(e && strstr(e, before_after) != NULL);
+  maelys_mir_error_free(e);
+  maelys_mir_destroy(m);
+}
+
+static void test_permission_contract(void) {
+  char root[] = "/tmp/maelys-sandbox-policy-contract-XXXXXX";
+  CHECK(make_temp_dir(root));
+  char private_dir[512], public_dir[512], temp_dir[512], link[512], src[512];
+  CHECK(snprintf(private_dir, sizeof(private_dir), "%s/private", root) > 0);
+  CHECK(snprintf(public_dir, sizeof(public_dir), "%s/public", private_dir) > 0);
+  CHECK(snprintf(temp_dir, sizeof(temp_dir), "%s/tmp", private_dir) > 0);
+  CHECK(snprintf(src, sizeof(src), "%s/src", root) > 0);
+  CHECK(snprintf(link, sizeof(link), "%s/alias", src) > 0);
+  CHECK(mkdir(private_dir, 0700) == 0 && mkdir(public_dir, 0700) == 0 &&
+        mkdir(temp_dir, 0700) == 0 && mkdir(src, 0700) == 0);
+  maelys_sandbox_policy_host_t *h = NULL;
+  char *e = NULL;
+  CHECK_OK(maelys_sandbox_policy_host_create(&h, &e));
+  CHECK_OK(maelys_sandbox_policy_host_set_workspace(h, root, &e));
+  CHECK_OK(maelys_sandbox_policy_host_set_temp(h, temp_dir, &e));
+
+  /* A grant under a denied tree, and a read under a written tree, meant
+   * something else before: both are refused, and no plan is returned. */
+  expect_conflict(two_rules(MAELYS_MIR_FS_DENY, MAELYS_MIR_ROOT_WORKSPACE,
+                            "private", MAELYS_MIR_FS_READ,
+                            MAELYS_MIR_ROOT_WORKSPACE, "private/public"),
+                  h, "before=read after=none");
+  expect_conflict(two_rules(MAELYS_MIR_FS_WRITE, MAELYS_MIR_ROOT_WORKSPACE, "",
+                            MAELYS_MIR_FS_READ, MAELYS_MIR_ROOT_WORKSPACE,
+                            "src"),
+                  h, "before=read after=read-write");
+  /* The overlap may only show once roots are resolved: the temp root lies
+   * inside the denied tree of the workspace. */
+  expect_conflict(two_rules(MAELYS_MIR_FS_DENY, MAELYS_MIR_ROOT_WORKSPACE,
+                            "private", MAELYS_MIR_FS_WRITE, MAELYS_MIR_ROOT_TEMP,
+                            ""),
+                  h, "before=read-write after=none");
+  /* ...or once a link is resolved: the host rule names an alias of it. */
+  CHECK(symlink(public_dir, link) == 0);
+  expect_conflict(two_rules(MAELYS_MIR_FS_DENY, MAELYS_MIR_ROOT_WORKSPACE,
+                            "private", MAELYS_MIR_FS_READ, MAELYS_MIR_ROOT_HOST,
+                            link),
+                  h, "before=read after=none");
+
+  /* An accepted plan: grants first, denies last, evaluated by the contract.
+   * The ephemeral-write root grants nothing by itself. */
+  maelys_mir_t *m = two_rules(MAELYS_MIR_FS_WRITE, MAELYS_MIR_ROOT_WORKSPACE, "",
+                              MAELYS_MIR_FS_DENY, MAELYS_MIR_ROOT_WORKSPACE,
+                              "private");
+  maelys_sandbox_policy_plan_t *p = NULL;
+  CHECK_OK(maelys_sandbox_policy_compile(m, h, all_caps, &p, &e));
+  CHECK(maelys_sandbox_policy_plan_root_mode(p) ==
+        MAELYS_MIR_ROOT_EPHEMERAL_WRITE);
+  maelys_sandbox_policy_resolved_rule_view_t rule;
+  CHECK_OK(maelys_sandbox_policy_plan_rule_at(p, 0, &rule));
+  CHECK(rule.access == MAELYS_MIR_FS_WRITE);
+  CHECK_OK(maelys_sandbox_policy_plan_rule_at(p, 1, &rule));
+  CHECK(rule.access == MAELYS_MIR_FS_DENY);
+  char *resolved_root = realpath(root, NULL);
+  char path[600];
+  maelys_sandbox_policy_evaluation_t evaluation;
+  CHECK(snprintf(path, sizeof(path), "%s/src/main.c", resolved_root) > 0);
+  CHECK_OK(maelys_sandbox_policy_plan_evaluate(p, path, &evaluation, &e));
+  CHECK(evaluation.permission == MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE &&
+        evaluation.reason == MAELYS_SANDBOX_POLICY_REASON_WRITE_RULE &&
+        evaluation.decisive_rule == 0u);
+  CHECK(snprintf(path, sizeof(path), "%s/private/public/a", resolved_root) > 0);
+  CHECK_OK(maelys_sandbox_policy_plan_evaluate(p, path, &evaluation, &e));
+  CHECK(evaluation.permission == MAELYS_SANDBOX_POLICY_PERMISSION_NONE &&
+        evaluation.reason == MAELYS_SANDBOX_POLICY_REASON_DENY_RULE &&
+        evaluation.decisive_rule == 1u && evaluation.applicable_rule_count == 2u);
+  CHECK_OK(maelys_sandbox_policy_plan_evaluate(p, "/etc/hosts", &evaluation, &e));
+  CHECK(evaluation.permission == MAELYS_SANDBOX_POLICY_PERMISSION_NONE &&
+        evaluation.reason == MAELYS_SANDBOX_POLICY_REASON_DEFAULT_DENY);
+  free(resolved_root);
+  maelys_sandbox_policy_plan_destroy(p);
+  maelys_mir_destroy(m);
+  maelys_sandbox_policy_host_destroy(h);
+  maelys_mir_error_free(e);
+  CHECK(unlink(link) == 0);
+  CHECK(rmdir(src) == 0 && rmdir(temp_dir) == 0 && rmdir(public_dir) == 0 &&
+        rmdir(private_dir) == 0 && rmdir(root) == 0);
+}
+
 static maelys_mir_t *missing_policy(const char *relative) {
   maelys_mir_builder_t *b = NULL;
   maelys_mir_t *m = NULL;
@@ -266,6 +384,7 @@ int main(void) {
   test_compile();
   test_symlink_escape();
   test_mediated_network();
+  test_permission_contract();
   test_destination_flags_require_capabilities();
   test_missing_is_not_io_failure();
   if (failures)

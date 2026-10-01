@@ -1,0 +1,5 @@
+# Exact does not beat tree among grants either.
+rule write tree /workspace
+rule read exact /workspace
+query /workspace read-write write-rule
+compile refused before=read after=read-write

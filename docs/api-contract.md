@@ -55,6 +55,14 @@ one silently. A backend advertises `CAP_NETWORK_REQUIRE_TLS_SNI` and
 `CAP_NETWORK_PRIVATE_ADDRESSES` only if its mediator enforces them; a plan
 using either flag fails closed without the matching capability.
 
+The permissions of a plan are defined by the
+[permission contract](permission-contract.md), not by the order of its rules.
+`maelys_sandbox_policy_plan_evaluate()` returns what the plan grants on one
+resolved absolute path, with the reason and one deciding rule; it reads the
+rules only. `maelys_sandbox_policy_compile` fails with
+`MAELYS_MIR_ERR_CONFLICT`, and returns no plan, when the resolved rules would
+grant different permissions under the earlier most-specific-wins order.
+
 `maelys_sandbox_policy_compile` verifies declared capabilities and resolves current
 paths, but it does not enforce them. Executor must consume the plan without
 weakening it and account for filesystem changes between compilation and spawn.

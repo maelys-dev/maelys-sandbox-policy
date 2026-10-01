@@ -1,0 +1,353 @@
+/*
+ * The permission contract against its corpus, and the claim that the
+ * conflict search between contract 1 and contract 2 visits every region.
+ */
+#include "internal.h"
+
+#include <dirent.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int failures;
+#define CHECK(x)                                                               \
+  do {                                                                         \
+    if (!(x)) {                                                                \
+      fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #x);             \
+      ++failures;                                                              \
+    }                                                                          \
+  } while (0)
+#define FAIL_CASE(...)                                                         \
+  do {                                                                         \
+    fprintf(stderr, "FAIL %s:%zu: ", file, line_number);                       \
+    fprintf(stderr, __VA_ARGS__);                                              \
+    fputc('\n', stderr);                                                       \
+    ++failures;                                                                \
+  } while (0)
+
+#define MAX_RULES 16u
+#define MAX_QUERIES 16u
+
+typedef struct query {
+  char path[256];
+  maelys_sandbox_policy_permission_t permission;
+  maelys_sandbox_policy_reason_t reason;
+} query_t;
+
+static int parse_permission(const char *text,
+                            maelys_sandbox_policy_permission_t *out) {
+  for (int value = 0; value <= 2; ++value) {
+    if (strcmp(text, maelys_sandbox_policy_permission_name(
+                         (maelys_sandbox_policy_permission_t)value)) == 0) {
+      *out = (maelys_sandbox_policy_permission_t)value;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static int parse_reason(const char *text, maelys_sandbox_policy_reason_t *out) {
+  for (int value = 1; value <= 4; ++value) {
+    if (strcmp(text, maelys_sandbox_policy_reason_name(
+                         (maelys_sandbox_policy_reason_t)value)) == 0) {
+      *out = (maelys_sandbox_policy_reason_t)value;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static void check_queries(const char *file,
+                          const maelys_sandbox_policy_resolved_rule_t *rules,
+                          size_t rule_count, const query_t *queries,
+                          size_t query_count, const char *order) {
+  size_t line_number = 0;
+  for (size_t i = 0; i < query_count; ++i) {
+    maelys_sandbox_policy_evaluation_t got;
+    maelys_plan_evaluate(rules, rule_count, queries[i].path, &got);
+    if (got.permission != queries[i].permission ||
+        got.reason != queries[i].reason)
+      FAIL_CASE("%s order: %s gives %s (%s), expected %s (%s)", order,
+                queries[i].path,
+                maelys_sandbox_policy_permission_name(got.permission),
+                maelys_sandbox_policy_reason_name(got.reason),
+                maelys_sandbox_policy_permission_name(queries[i].permission),
+                maelys_sandbox_policy_reason_name(queries[i].reason));
+    if ((got.reason == MAELYS_SANDBOX_POLICY_REASON_DEFAULT_DENY) !=
+        (got.decisive_rule == SIZE_MAX))
+      FAIL_CASE("%s order: %s has an inconsistent decisive rule", order,
+                queries[i].path);
+  }
+}
+
+static void run_case(const char *file) {
+  FILE *stream = fopen(file, "r");
+  size_t line_number = 0;
+  if (!stream) {
+    FAIL_CASE("cannot open");
+    return;
+  }
+  maelys_sandbox_policy_plan_t *plan = calloc(1, sizeof(*plan));
+  plan->rules = calloc(MAX_RULES, sizeof(*plan->rules));
+  plan->rule_capacity = MAX_RULES;
+  static query_t queries[MAX_QUERIES];
+  size_t query_count = 0;
+  int compile_seen = 0, refused = 0;
+  maelys_sandbox_policy_permission_t before = 0, after = 0;
+  char line[512];
+  while (fgets(line, sizeof(line), stream)) {
+    ++line_number;
+    char a[64], b[64], c[256], d[64];
+    if (line[0] == '#' || line[0] == '\n')
+      continue;
+    if (sscanf(line, "rule %63s %63s %255s", a, b, c) == 3) {
+      maelys_sandbox_policy_resolved_rule_t rule;
+      rule.access = strcmp(a, "read") == 0    ? MAELYS_MIR_FS_READ
+                    : strcmp(a, "write") == 0 ? MAELYS_MIR_FS_WRITE
+                                              : MAELYS_MIR_FS_DENY;
+      rule.scope = strcmp(b, "tree") == 0 ? MAELYS_MIR_SCOPE_TREE
+                                          : MAELYS_MIR_SCOPE_EXACT;
+      if ((rule.access == MAELYS_MIR_FS_DENY && strcmp(a, "deny") != 0) ||
+          (rule.scope == MAELYS_MIR_SCOPE_EXACT && strcmp(b, "exact") != 0) ||
+          !maelys_plan_path_is_canonical(c) || plan->rule_count == MAX_RULES) {
+        FAIL_CASE("invalid rule");
+        continue;
+      }
+      rule.path = maelys_strdup(c);
+      plan->rules[plan->rule_count++] = rule;
+    } else if (sscanf(line, "query %255s %63s %63s", c, a, b) == 3) {
+      if (query_count == MAX_QUERIES || !maelys_plan_path_is_canonical(c) ||
+          !parse_permission(a, &queries[query_count].permission) ||
+          !parse_reason(b, &queries[query_count].reason)) {
+        FAIL_CASE("invalid query");
+        continue;
+      }
+      (void)snprintf(queries[query_count].path,
+                     sizeof(queries[query_count].path), "%s", c);
+      ++query_count;
+    } else if (sscanf(line, "compile refused before=%63s after=%63s", a, d) ==
+               2) {
+      compile_seen = refused = 1;
+      if (!parse_permission(a, &before) || !parse_permission(d, &after))
+        FAIL_CASE("invalid compile expectation");
+    } else if (strcmp(line, "compile accepted\n") == 0) {
+      compile_seen = 1;
+    } else {
+      FAIL_CASE("unknown directive");
+    }
+  }
+  fclose(stream);
+  line_number = 0;
+  if (!compile_seen || query_count == 0)
+    FAIL_CASE("a case needs queries and one compile line");
+
+  /* The contract holds for every order of the rules. */
+  check_queries(file, plan->rules, plan->rule_count, queries, query_count,
+                "written");
+  for (size_t i = 0; i < plan->rule_count / 2u; ++i) {
+    maelys_sandbox_policy_resolved_rule_t swap = plan->rules[i];
+    plan->rules[i] = plan->rules[plan->rule_count - 1u - i];
+    plan->rules[plan->rule_count - 1u - i] = swap;
+  }
+  check_queries(file, plan->rules, plan->rule_count, queries, query_count,
+                "reversed");
+
+  maelys_plan_conflict_t conflict;
+  maelys_mir_result_t found =
+      maelys_plan_find_conflict(plan->rules, plan->rule_count, &conflict);
+  char *error = NULL;
+  maelys_mir_result_t finalized =
+      maelys_sandbox_policy_plan_finalize(plan, &error);
+  if (refused) {
+    if (found != MAELYS_MIR_ERR_CONFLICT || finalized != MAELYS_MIR_ERR_CONFLICT)
+      FAIL_CASE("expected a precedence conflict");
+    else if (conflict.before != before || conflict.after != after)
+      FAIL_CASE("conflict at %s is before=%s after=%s", conflict.witness,
+                maelys_sandbox_policy_permission_name(conflict.before),
+                maelys_sandbox_policy_permission_name(conflict.after));
+    else if (!error || !strstr(error, "permission precedence conflict at /") ||
+             !strstr(error, conflict.witness))
+      FAIL_CASE("the diagnostic does not name the witness path");
+  } else {
+    if (found != MAELYS_MIR_OK || finalized != MAELYS_MIR_OK)
+      FAIL_CASE("unexpected refusal: %s", error ? error : "no diagnostic");
+    check_queries(file, plan->rules, plan->rule_count, queries, query_count,
+                  "plan");
+    /* Plan order: every grant, then every deny. */
+    int deny_seen = 0;
+    for (size_t i = 0; i < plan->rule_count; ++i) {
+      if (plan->rules[i].access == MAELYS_MIR_FS_DENY)
+        deny_seen = 1;
+      else if (deny_seen)
+        FAIL_CASE("a grant follows a deny in plan order");
+    }
+  }
+  free(conflict.witness);
+  maelys_mir_error_free(error);
+  maelys_sandbox_policy_plan_destroy(plan);
+}
+
+static int by_name(const void *left, const void *right) {
+  return strcmp(*(char *const *)left, *(char *const *)right);
+}
+
+static void test_corpus(const char *directory) {
+  DIR *handle = opendir(directory);
+  CHECK(handle != NULL);
+  if (!handle)
+    return;
+  char *files[128];
+  size_t count = 0;
+  struct dirent *entry;
+  while ((entry = readdir(handle)) && count < 128u) {
+    size_t n = strlen(entry->d_name);
+    if (n < 6u || strcmp(entry->d_name + n - 5u, ".case") != 0)
+      continue;
+    size_t size = strlen(directory) + n + 2u;
+    files[count] = malloc(size);
+    (void)snprintf(files[count], size, "%s/%s", directory, entry->d_name);
+    ++count;
+  }
+  closedir(handle);
+  qsort(files, count, sizeof(*files), by_name);
+  CHECK(count >= 20u);
+  for (size_t i = 0; i < count; ++i) {
+    run_case(files[i]);
+    free(files[i]);
+  }
+}
+
+/* ---- exhaustive cross-check of the conflict search ------------------------ */
+
+static uint32_t random_state = 0x9e3779b9u;
+static uint32_t next_random(void) {
+  random_state ^= random_state << 13;
+  random_state ^= random_state >> 17;
+  random_state ^= random_state << 5;
+  return random_state;
+}
+
+/* Most specific wins, written independently of src/permissions.c: longest
+ * path, then exact over tree, then deny over write over read. */
+static maelys_sandbox_policy_permission_t
+most_specific(const maelys_sandbox_policy_resolved_rule_t *rules, size_t count,
+              const char *path) {
+  int best = -1;
+  for (size_t i = 0; i < count; ++i) {
+    if (!maelys_plan_rule_applies(&rules[i], path))
+      continue;
+    if (best < 0) {
+      best = (int)i;
+      continue;
+    }
+    const maelys_sandbox_policy_resolved_rule_t *a = &rules[best], *b = &rules[i];
+    size_t an = strlen(a->path), bn = strlen(b->path);
+    int later = bn != an ? bn > an
+                : a->scope != b->scope ? b->scope == MAELYS_MIR_SCOPE_EXACT
+                                       : b->access > a->access;
+    if (later)
+      best = (int)i;
+  }
+  if (best < 0 || rules[best].access == MAELYS_MIR_FS_DENY)
+    return MAELYS_SANDBOX_POLICY_PERMISSION_NONE;
+  return rules[best].access == MAELYS_MIR_FS_WRITE
+             ? MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE
+             : MAELYS_SANDBOX_POLICY_PERMISSION_READ;
+}
+
+/* Every path of depth 0..4 over three segment names, as rule paths use two
+ * of them and depth 3 at most: each region has a path here. */
+static int differs_somewhere(const maelys_sandbox_policy_resolved_rule_t *rules,
+                             size_t count) {
+  static const char *const names[] = {"a", "b", "c"};
+  for (unsigned depth = 0; depth <= 4u; ++depth) {
+    unsigned total = 1;
+    for (unsigned i = 0; i < depth; ++i)
+      total *= 3u;
+    for (unsigned index = 0; index < total; ++index) {
+      char path[32] = "/";
+      size_t used = depth ? 0u : 1u;
+      unsigned rest = index;
+      for (unsigned i = 0; i < depth; ++i, rest /= 3u)
+        used += (size_t)snprintf(path + used, sizeof(path) - used, "/%s",
+                                 names[rest % 3u]);
+      maelys_sandbox_policy_evaluation_t contract;
+      maelys_plan_evaluate(rules, count, path, &contract);
+      if (contract.permission != most_specific(rules, count, path))
+        return 1;
+    }
+  }
+  return 0;
+}
+
+static void test_conflict_search_is_complete(void) {
+  static const char *const paths[] = {"/",      "/a",     "/b",     "/a/a",
+                                      "/a/b",   "/b/a",   "/a/a/a", "/a/a/b",
+                                      "/a/b/a", "/b/a/b"};
+  unsigned conflicts = 0, agreements = 0;
+  for (unsigned round = 0; round < 20000u; ++round) {
+    maelys_sandbox_policy_resolved_rule_t rules[5];
+    size_t count = 1u + next_random() % 5u;
+    for (size_t i = 0; i < count; ++i) {
+      rules[i].access = (maelys_mir_fs_access_t)(1u + next_random() % 3u);
+      rules[i].scope = (maelys_mir_path_scope_t)(1u + next_random() % 2u);
+      rules[i].path = (char *)paths[next_random() % 10u];
+    }
+    maelys_plan_conflict_t conflict;
+    maelys_mir_result_t found = maelys_plan_find_conflict(rules, count, &conflict);
+    int expected = differs_somewhere(rules, count);
+    CHECK((found == MAELYS_MIR_ERR_CONFLICT) == expected);
+    CHECK(found == MAELYS_MIR_OK || found == MAELYS_MIR_ERR_CONFLICT);
+    if (found == MAELYS_MIR_ERR_CONFLICT) {
+      maelys_sandbox_policy_evaluation_t contract;
+      maelys_plan_evaluate(rules, count, conflict.witness, &contract);
+      CHECK(contract.permission == conflict.after);
+      CHECK(most_specific(rules, count, conflict.witness) == conflict.before);
+      CHECK(conflict.before != conflict.after);
+      ++conflicts;
+    } else {
+      ++agreements;
+    }
+    free(conflict.witness);
+    if (failures)
+      return;
+  }
+  CHECK(conflicts > 1000u && agreements > 1000u);
+}
+
+static void test_evaluate_arguments(void) {
+  maelys_sandbox_policy_plan_t *plan = calloc(1, sizeof(*plan));
+  maelys_sandbox_policy_evaluation_t out;
+  static const char *const invalid[] = {"",      "relative", "/a/",  "/a//b",
+                                        "/a/./b", "/a/../b",  "/..",  "//"};
+  for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+    char *error = NULL;
+    CHECK(maelys_sandbox_policy_plan_evaluate(plan, invalid[i], &out, &error) ==
+          MAELYS_MIR_ERR_ARGUMENT);
+    CHECK(error != NULL);
+    maelys_mir_error_free(error);
+  }
+  CHECK(maelys_sandbox_policy_plan_evaluate(plan, NULL, &out, NULL) ==
+        MAELYS_MIR_ERR_ARGUMENT);
+  CHECK(maelys_sandbox_policy_plan_evaluate(NULL, "/", &out, NULL) ==
+        MAELYS_MIR_ERR_ARGUMENT);
+  CHECK(maelys_sandbox_policy_plan_evaluate(plan, "/", &out, NULL) ==
+        MAELYS_MIR_OK);
+  CHECK(out.permission == MAELYS_SANDBOX_POLICY_PERMISSION_NONE &&
+        out.reason == MAELYS_SANDBOX_POLICY_REASON_DEFAULT_DENY &&
+        out.decisive_rule == SIZE_MAX && out.applicable_rule_count == 0u);
+  maelys_sandbox_policy_plan_destroy(plan);
+}
+
+int main(int argc, char **argv) {
+  if (argc != 2) {
+    fprintf(stderr, "usage: test_permissions CORPUS_CASES_DIRECTORY\n");
+    return 2;
+  }
+  test_corpus(argv[1]);
+  test_conflict_search_is_complete();
+  test_evaluate_arguments();
+  if (failures)
+    fprintf(stderr, "%d permission test failures\n", failures);
+  return failures ? 1 : 0;
+}

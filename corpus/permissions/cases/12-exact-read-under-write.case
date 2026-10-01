@@ -1,0 +1,5 @@
+# The same holds for one file.
+rule write tree /workspace
+rule read exact /workspace/Makefile
+query /workspace/Makefile read-write write-rule
+compile refused before=read after=read-write

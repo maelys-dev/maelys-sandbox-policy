@@ -1,0 +1,6 @@
+# An exact rule covers one path and nothing under it.
+rule read exact /workspace/README
+query /workspace/README read read-rule
+query /workspace/README/child none default-deny
+query /workspace none default-deny
+compile accepted

@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **breaking (SandboxPlan, ABI 5):** the filesystem permissions of a plan are
+  now a normative [contract](docs/permission-contract.md) independent of rule
+  order: a deny is absolute, grants are additive, access is denied by default
+  and the root mode grants nothing. Plans list grants, then denies;
+- refuse instead of reinterpret: `maelys_sandbox_policy_compile` returns the
+  new `MAELYS_MIR_ERR_CONFLICT` when the resolved rules would grant different
+  permissions under the earlier most-specific-wins order (a grant under a
+  denied tree, a `read` under a written tree, `exact` against `tree`), naming
+  a witness path and the permission before and after. MIR bytes and digests
+  are unchanged and no rule is dropped. A read-only subtree of a writable
+  tree is no longer expressible;
+- add the reference evaluator `maelys_sandbox_policy_plan_evaluate()` and the
+  versioned corpus `corpus/permissions`, installed under
+  `share/maelys-sandbox-policy/corpus`, for consumers to prove conformance.
+
 ## 0.5.1 — 2026-09-27
 
 - fix the Homebrew formula template, whose rendering `brew style` refused

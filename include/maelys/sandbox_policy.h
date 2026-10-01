@@ -10,7 +10,12 @@ extern "C" {
 typedef struct maelys_sandbox_policy_host maelys_sandbox_policy_host_t;
 typedef struct maelys_sandbox_policy_plan maelys_sandbox_policy_plan_t;
 
-#define MAELYS_SANDBOX_POLICY_ABI_VERSION 4u
+#define MAELYS_SANDBOX_POLICY_ABI_VERSION 5u
+/* The permission contract a SandboxPlan carries. Contract 2: a deny wins
+ * over every overlapping grant, grants are additive, and a policy whose
+ * permissions differ from the most-specific-wins order of contract 1 is
+ * refused with MAELYS_MIR_ERR_CONFLICT instead of being reinterpreted. */
+#define MAELYS_SANDBOX_POLICY_PERMISSION_CONTRACT 2u
 #define MAELYS_SANDBOX_POLICY_VERSION "0.5.1"
 
 typedef uint64_t maelys_sandbox_policy_capabilities_t;
@@ -32,6 +37,28 @@ typedef struct maelys_sandbox_policy_resolved_rule_view {
   maelys_mir_path_scope_t scope;
   const char *path;
 } maelys_sandbox_policy_resolved_rule_view_t;
+
+typedef enum maelys_sandbox_policy_permission {
+  MAELYS_SANDBOX_POLICY_PERMISSION_NONE = 0,
+  MAELYS_SANDBOX_POLICY_PERMISSION_READ = 1,
+  MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE = 2
+} maelys_sandbox_policy_permission_t;
+
+typedef enum maelys_sandbox_policy_reason {
+  MAELYS_SANDBOX_POLICY_REASON_DEFAULT_DENY = 1,
+  MAELYS_SANDBOX_POLICY_REASON_DENY_RULE = 2,
+  MAELYS_SANDBOX_POLICY_REASON_WRITE_RULE = 3,
+  MAELYS_SANDBOX_POLICY_REASON_READ_RULE = 4
+} maelys_sandbox_policy_reason_t;
+
+typedef struct maelys_sandbox_policy_evaluation {
+  maelys_sandbox_policy_permission_t permission;
+  maelys_sandbox_policy_reason_t reason;
+  /* Index of one rule that decides, for maelys_sandbox_policy_plan_rule_at();
+   * SIZE_MAX under REASON_DEFAULT_DENY. */
+  size_t decisive_rule;
+  size_t applicable_rule_count;
+} maelys_sandbox_policy_evaluation_t;
 
 maelys_mir_result_t maelys_sandbox_policy_host_create(maelys_sandbox_policy_host_t **out_host,
                                                char **out_error);
@@ -64,6 +91,22 @@ size_t maelys_sandbox_policy_plan_rule_count(const maelys_sandbox_policy_plan_t 
 maelys_mir_result_t
 maelys_sandbox_policy_plan_rule_at(const maelys_sandbox_policy_plan_t *plan, size_t index,
                             maelys_sandbox_policy_resolved_rule_view_t *out_rule);
+/*
+ * Reference evaluator of the filesystem permission contract: what the plan
+ * grants on one resolved absolute path. It reads the rules only, never the
+ * filesystem, and its answer does not depend on their order: any applicable
+ * deny gives no access; otherwise any applicable write gives read and write;
+ * otherwise an applicable read gives read; otherwise nothing. The root mode
+ * grants nothing. A backend conforms when it enforces exactly this, or
+ * refuses the plan before launch.
+ */
+maelys_mir_result_t maelys_sandbox_policy_plan_evaluate(
+    const maelys_sandbox_policy_plan_t *plan, const char *absolute_path,
+    maelys_sandbox_policy_evaluation_t *out_evaluation, char **out_error);
+const char *
+maelys_sandbox_policy_permission_name(maelys_sandbox_policy_permission_t value);
+const char *
+maelys_sandbox_policy_reason_name(maelys_sandbox_policy_reason_t value);
 maelys_mir_network_mode_t
 maelys_sandbox_policy_plan_network(const maelys_sandbox_policy_plan_t *plan);
 maelys_mir_root_mode_t maelys_sandbox_policy_plan_root_mode(

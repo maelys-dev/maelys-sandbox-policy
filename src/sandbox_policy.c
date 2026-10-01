@@ -302,22 +302,6 @@ static maelys_mir_result_t append_rule(maelys_sandbox_policy_plan_t *p,
       (maelys_sandbox_policy_resolved_rule_t){access, scope, path};
   return MAELYS_MIR_OK;
 }
-static int plan_rule_compare(const void *left, const void *right) {
-  const maelys_sandbox_policy_resolved_rule_t *a = left, *b = right;
-  size_t an = strlen(a->path), bn = strlen(b->path);
-  if (an != bn)
-    return an < bn ? -1 : 1;
-  int path = strcmp(a->path, b->path);
-  if (path)
-    return path; /* tree is broader and must precede exact for last-match
-                    backends. */
-  if (a->scope != b->scope)
-    return a->scope == MAELYS_MIR_SCOPE_TREE ? -1 : 1;
-  if (a->access != b->access)
-    return a->access < b->access ? -1 : 1;
-  return 0;
-}
-
 static maelys_mir_result_t compile_one(const maelys_mir_fs_rule_t *r,
                                        const char *root, int enforce_root,
                                        maelys_sandbox_policy_plan_t *p, char **err) {
@@ -428,8 +412,9 @@ maelys_sandbox_policy_compile(const maelys_mir_t *mir,
         goto bad;
     }
   }
-  if (p->rule_count > 1u)
-    qsort(p->rules, p->rule_count, sizeof(*p->rules), plan_rule_compare);
+  result = maelys_sandbox_policy_plan_finalize(p, err);
+  if (result)
+    goto bad;
   *out = p;
   return MAELYS_MIR_OK;
 bad:

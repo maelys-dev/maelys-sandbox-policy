@@ -1,0 +1,9 @@
+# A read rule is a grant, not a write restriction: the inherited write
+# stays. Contract 1 read this as "vendor is read-only", so compilation
+# refuses it. A read-only subtree of a writable tree is not expressible.
+rule write tree /workspace
+rule read tree /workspace/vendor
+query /workspace/vendor read-write write-rule
+query /workspace/vendor/lib.c read-write write-rule
+query /workspace/src read-write write-rule
+compile refused before=read after=read-write

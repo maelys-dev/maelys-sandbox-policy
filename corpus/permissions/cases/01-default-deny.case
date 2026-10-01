@@ -1,0 +1,4 @@
+# Nothing is granted without a rule.
+query / none default-deny
+query /etc/passwd none default-deny
+compile accepted

@@ -1,0 +1,10 @@
+# Overlapping denies of both scopes inside one grant.
+rule write tree /w
+rule deny tree /w/a
+rule deny exact /w/a/b
+rule deny exact /w/c
+query /w/a/b none deny-rule
+query /w/a/z none deny-rule
+query /w/c none deny-rule
+query /w/c/d read-write write-rule
+compile accepted
