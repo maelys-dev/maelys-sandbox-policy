@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mode", "changed", "base", "baseDigest", "restriction", "restrictionDigest", "output", "bytes", "digest", "precondition"],
+  "properties": {
+    "mode": {"enum": ["plan", "apply"]},
+    "changed": {"type": "boolean"},
+    "base": {"type": "string"},
+    "baseDigest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "restriction": {"type": "string"},
+    "restrictionDigest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "output": {"type": "string"},
+    "bytes": {"type": "integer", "minimum": 20},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetAbsent", "replace"],
+      "properties": {
+        "targetAbsent": {"type": "boolean"},
+        "replace": {"type": "boolean"}
+      }
+    }
+  }
+}

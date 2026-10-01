@@ -421,6 +421,322 @@
         },
         {
           "available": true,
+          "effect": {
+            "apply": "apply",
+            "plan": "preview"
+          },
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "restrict",
+          "input": {
+            "constraints": [],
+            "operands": [
+              {
+                "name": "BASE",
+                "required": true,
+                "summary": "Canonical MIR of the trusted base policy.",
+                "variadic": false
+              },
+              {
+                "name": "RESTRICTION",
+                "required": true,
+                "summary": "Canonical MIR of the ceiling to apply: filesystem deny rules only.",
+                "variadic": false
+              }
+            ],
+            "options": [
+              {
+                "argument": {
+                  "name": "FILE",
+                  "type": "path"
+                },
+                "conflictsWith": [],
+                "long": "--output",
+                "repeatable": false,
+                "required": true,
+                "requires": [],
+                "summary": "Destination of the canonical MIR."
+              },
+              {
+                "conflictsWith": [],
+                "long": "--replace",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Allow replacing an existing output atomically."
+              },
+              {
+                "conflictsWith": [],
+                "long": "--apply",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Apply the reviewed transaction; omission returns a read-only plan."
+              }
+            ],
+            "passthrough": false,
+            "synopsis": "restrict BASE RESTRICTION --output FILE [--replace] [--apply]"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "base": {
+                "type": "string"
+              },
+              "baseDigest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "bytes": {
+                "minimum": 20,
+                "type": "integer"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "plan",
+                  "apply"
+                ]
+              },
+              "output": {
+                "type": "string"
+              },
+              "precondition": {
+                "additionalProperties": false,
+                "properties": {
+                  "replace": {
+                    "type": "boolean"
+                  },
+                  "targetAbsent": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "targetAbsent",
+                  "replace"
+                ],
+                "type": "object"
+              },
+              "restriction": {
+                "type": "string"
+              },
+              "restrictionDigest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode",
+              "changed",
+              "base",
+              "baseDigest",
+              "restriction",
+              "restrictionDigest",
+              "output",
+              "bytes",
+              "digest",
+              "precondition"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "restrict"
+          ],
+          "purpose": "Compose a restriction over a base policy; the result grants nothing the base did not.",
+          "usage": "restrict BASE RESTRICTION --output FILE [--replace] [--apply]"
+        },
+        {
+          "available": true,
+          "effect": "read",
+          "exitCodes": {
+            "0": "command completed",
+            "1": "execution failed",
+            "2": "valid report with violations"
+          },
+          "external": false,
+          "hidden": false,
+          "id": "capabilities",
+          "input": {
+            "constraints": [
+              {
+                "kind": "requires",
+                "options": [
+                  "--available",
+                  "--check"
+                ]
+              }
+            ],
+            "operands": [
+              {
+                "name": "POLICY",
+                "required": true,
+                "summary": "Canonical MIR file.",
+                "variadic": false
+              }
+            ],
+            "options": [
+              {
+                "conflictsWith": [],
+                "long": "--check",
+                "repeatable": false,
+                "required": false,
+                "requires": [],
+                "summary": "Compare the requirements with the capabilities given by --available, none if it is absent; exit 2 when some are missing."
+              },
+              {
+                "argument": {
+                  "choices": [
+                    "fs-read",
+                    "fs-write",
+                    "fs-deny",
+                    "network-none",
+                    "network-direct",
+                    "network-mediated",
+                    "process-tree",
+                    "root-ephemeral-write",
+                    "network-require-tls-sni",
+                    "network-private-addresses",
+                    "fs-protect-create"
+                  ],
+                  "name": "CAPABILITY",
+                  "type": "choice"
+                },
+                "conflictsWith": [],
+                "long": "--available",
+                "repeatable": true,
+                "required": false,
+                "requires": [
+                  "--check"
+                ],
+                "summary": "Capability a backend is declared to offer; repeatable."
+              }
+            ],
+            "passthrough": false,
+            "synopsis": "capabilities POLICY [--check] [--available CAPABILITY...]"
+          },
+          "outputMode": "json-envelope",
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "available": {
+                "items": {
+                  "enum": [
+                    "fs-read",
+                    "fs-write",
+                    "fs-deny",
+                    "network-none",
+                    "network-direct",
+                    "network-mediated",
+                    "process-tree",
+                    "root-ephemeral-write",
+                    "network-require-tls-sni",
+                    "network-private-addresses",
+                    "fs-protect-create"
+                  ]
+                },
+                "type": "array"
+              },
+              "checked": {
+                "type": "boolean"
+              },
+              "digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "missing": {
+                "items": {
+                  "enum": [
+                    "fs-read",
+                    "fs-write",
+                    "fs-deny",
+                    "network-none",
+                    "network-direct",
+                    "network-mediated",
+                    "process-tree",
+                    "root-ephemeral-write",
+                    "network-require-tls-sni",
+                    "network-private-addresses",
+                    "fs-protect-create"
+                  ]
+                },
+                "type": "array"
+              },
+              "policy": {
+                "type": "string"
+              },
+              "required": {
+                "items": {
+                  "enum": [
+                    "fs-read",
+                    "fs-write",
+                    "fs-deny",
+                    "network-none",
+                    "network-direct",
+                    "network-mediated",
+                    "process-tree",
+                    "root-ephemeral-write",
+                    "network-require-tls-sni",
+                    "network-private-addresses",
+                    "fs-protect-create"
+                  ]
+                },
+                "type": "array"
+              },
+              "resolutionMayRequire": {
+                "items": {
+                  "enum": [
+                    "fs-read",
+                    "fs-write",
+                    "fs-deny",
+                    "network-none",
+                    "network-direct",
+                    "network-mediated",
+                    "process-tree",
+                    "root-ephemeral-write",
+                    "network-require-tls-sni",
+                    "network-private-addresses",
+                    "fs-protect-create"
+                  ]
+                },
+                "type": "array"
+              },
+              "scope": {
+                "const": "mir"
+              },
+              "supported": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "policy",
+              "digest",
+              "scope",
+              "required",
+              "resolutionMayRequire",
+              "checked"
+            ],
+            "type": "object"
+          },
+          "pattern": [
+            "capabilities"
+          ],
+          "purpose": "List the backend capabilities a policy requires, or check them against a declared set; exit 2 when some are missing.",
+          "usage": "capabilities POLICY [--check] [--available CAPABILITY...]"
+        },
+        {
+          "available": true,
           "effect": "read",
           "exitCodes": {
             "0": "command completed",

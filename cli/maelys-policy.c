@@ -73,12 +73,89 @@ static int decode_policy(maelys_cli_context_t *context, const char *path,
   return MAELYS_CLI_EXIT_OK;
 }
 
+typedef struct published_policy {
+  size_t size;
+  char digest[MAELYS_MIR_DIGEST_HEX_SIZE];
+  int target_absent;
+} published_policy_t;
+
+/* The write half of a transaction that produces canonical MIR: encodes,
+ * holds the output precondition and, under --apply, writes atomically. It
+ * reads --output, --replace and --apply. On failure it has replied and
+ * returns nonzero. */
+static int publish_policy(maelys_cli_context_t *context, const maelys_mir_t *mir,
+                          const char *what, published_policy_t *out) {
+  const char *output = maelys_cli_option(context, "output");
+  int replace = maelys_cli_flag(context, "replace");
+  uint8_t *bytes = NULL;
+  char *error = NULL;
+  maelys_mir_result_t result = maelys_mir_encode(mir, &bytes, &out->size, &error);
+  if (result == MAELYS_MIR_OK)
+    result = maelys_mir_digest_hex(mir, out->digest, &error);
+  if (result != MAELYS_MIR_OK) {
+    maelys_mir_bytes_free(bytes);
+    (void)fail_mir(context, result, error, what);
+    return 1;
+  }
+  struct stat status;
+  out->target_absent = lstat(output, &status) != 0 && errno == ENOENT;
+  if (!out->target_absent && !replace) {
+    maelys_mir_bytes_free(bytes);
+    (void)maelys_cli_fail(
+        context, MAELYS_CLI_CODE_PRECONDITION_FAILED,
+        "Choose a new path or add --replace to overwrite atomically.",
+        "Output %s already exists.", output);
+    return 1;
+  }
+  if (maelys_cli_flag(context, "apply") &&
+      maelys_cli_write_file_atomic(output, bytes, out->size, 0644,
+                                   replace ? MAELYS_CLI_WRITE_REPLACE
+                                           : MAELYS_CLI_WRITE_NO_REPLACE) != 0) {
+    int saved = errno;
+    maelys_mir_bytes_free(bytes);
+    (void)maelys_cli_fail_errno(context, MAELYS_CLI_CODE_IO_FAILED, saved,
+                                output);
+    return 1;
+  }
+  maelys_mir_bytes_free(bytes);
+  return 0;
+}
+
+static void write_publication(maelys_cli_json_writer_t *data,
+                              maelys_cli_context_t *context,
+                              const published_policy_t *published) {
+  (void)maelys_cli_json_key_string(data, "output",
+                                   maelys_cli_option(context, "output"));
+  (void)maelys_cli_json_key_unsigned(data, "bytes", (uint64_t)published->size);
+  (void)maelys_cli_json_key_string(data, "digest", published->digest);
+  (void)maelys_cli_json_key(data, "precondition");
+  (void)maelys_cli_json_begin_object(data);
+  (void)maelys_cli_json_key_boolean(data, "targetAbsent",
+                                    published->target_absent);
+  (void)maelys_cli_json_key_boolean(data, "replace",
+                                    maelys_cli_flag(context, "replace"));
+  (void)maelys_cli_json_end_object(data);
+}
+
+static void describe_publication(maelys_cli_context_t *context,
+                                 const published_policy_t *published,
+                                 char *human, size_t size) {
+  (void)snprintf(human, size,
+                 maelys_cli_flag(context, "apply")
+                     ? "Wrote %s (%zu bytes, sha256:%s)."
+                     : "Plan only; add --apply to write %s (%zu bytes, "
+                       "sha256:%s).",
+                 maelys_cli_option(context, "output"), published->size,
+                 published->digest);
+}
+
 /* ---- compile (plan/apply transaction) ------------------------------------- */
 
 static const maelys_cli_operand_t compile_operands[] = {
     {MAELYS_CLI_OPERAND("SOURCE", "Strict JSON policy source (format v3).")},
 };
-static const maelys_cli_option_t compile_options[] = {
+/* The options of every transaction that writes canonical MIR. */
+static const maelys_cli_option_t publish_options[] = {
     {MAELYS_CLI_PATH("output", "FILE", "Destination of the canonical MIR."),
      .required = 1},
     {MAELYS_CLI_FLAG("replace", "Allow replacing an existing output atomically.")},
@@ -87,10 +164,7 @@ static const maelys_cli_option_t compile_options[] = {
 
 static int command_compile(maelys_cli_context_t *context) {
   const char *source = maelys_cli_operand(context, 0u);
-  const char *output = maelys_cli_option(context, "output");
-  int replace = maelys_cli_flag(context, "replace");
   int apply = maelys_cli_flag(context, "apply");
-
   unsigned char *json = NULL;
   size_t json_size = 0u;
   if (read_input(context, source, &json, &json_size) != 0)
@@ -102,37 +176,11 @@ static int command_compile(maelys_cli_context_t *context) {
   free(json);
   if (result != MAELYS_MIR_OK)
     return fail_mir(context, result, error, source);
-  uint8_t *bytes = NULL;
-  size_t size = 0u;
-  char digest[MAELYS_MIR_DIGEST_HEX_SIZE];
-  result = maelys_mir_encode(mir, &bytes, &size, &error);
-  if (result == MAELYS_MIR_OK)
-    result = maelys_mir_digest_hex(mir, digest, &error);
+  published_policy_t published;
+  int failed = publish_policy(context, mir, source, &published);
   maelys_mir_destroy(mir);
-  if (result != MAELYS_MIR_OK) {
-    maelys_mir_bytes_free(bytes);
-    return fail_mir(context, result, error, source);
-  }
-
-  struct stat status;
-  int absent = lstat(output, &status) != 0 && errno == ENOENT;
-  if (!absent && !replace) {
-    maelys_mir_bytes_free(bytes);
-    return maelys_cli_fail(
-        context, MAELYS_CLI_CODE_PRECONDITION_FAILED,
-        "Choose a new path or add --replace to overwrite atomically.",
-        "Output %s already exists.", output);
-  }
-  if (apply &&
-      maelys_cli_write_file_atomic(output, bytes, size, 0644,
-                                   replace ? MAELYS_CLI_WRITE_REPLACE
-                                           : MAELYS_CLI_WRITE_NO_REPLACE) != 0) {
-    int saved = errno;
-    maelys_mir_bytes_free(bytes);
-    return maelys_cli_fail_errno(context, MAELYS_CLI_CODE_IO_FAILED, saved,
-                                 output);
-  }
-  maelys_mir_bytes_free(bytes);
+  if (failed)
+    return MAELYS_CLI_EXIT_FAILURE;
 
   maelys_cli_json_writer_t data;
   maelys_cli_json_writer_init(&data);
@@ -140,22 +188,197 @@ static int command_compile(maelys_cli_context_t *context) {
   (void)maelys_cli_json_key_string(&data, "mode", apply ? "apply" : "plan");
   (void)maelys_cli_json_key_boolean(&data, "changed", apply);
   (void)maelys_cli_json_key_string(&data, "source", source);
-  (void)maelys_cli_json_key_string(&data, "output", output);
-  (void)maelys_cli_json_key_unsigned(&data, "bytes", (uint64_t)size);
-  (void)maelys_cli_json_key_string(&data, "digest", digest);
-  (void)maelys_cli_json_key(&data, "precondition");
-  (void)maelys_cli_json_begin_object(&data);
-  (void)maelys_cli_json_key_boolean(&data, "targetAbsent", absent);
-  (void)maelys_cli_json_key_boolean(&data, "replace", replace);
-  (void)maelys_cli_json_end_object(&data);
+  write_publication(&data, context, &published);
   (void)maelys_cli_json_end_object(&data);
   char human[512];
-  (void)snprintf(human, sizeof(human),
-                 apply ? "Wrote %s (%zu bytes, sha256:%s)."
-                       : "Plan only; add --apply to write %s (%zu bytes, "
-                         "sha256:%s).",
-                 output, size, digest);
+  describe_publication(context, &published, human, sizeof(human));
   return maelys_cli_succeed_writer(context, &data, human, MAELYS_CLI_EXIT_OK);
+}
+
+/* ---- restrict (plan/apply transaction) ------------------------------------- */
+
+static const maelys_cli_operand_t restrict_operands[] = {
+    {MAELYS_CLI_OPERAND("BASE", "Canonical MIR of the trusted base policy.")},
+    {MAELYS_CLI_OPERAND("RESTRICTION",
+                        "Canonical MIR of the ceiling to apply: filesystem "
+                        "deny rules only.")},
+};
+
+static int command_restrict(maelys_cli_context_t *context) {
+  const char *base_path = maelys_cli_operand(context, 0u);
+  const char *restriction_path = maelys_cli_operand(context, 1u);
+  int apply = maelys_cli_flag(context, "apply");
+  maelys_mir_t *base = NULL, *restriction = NULL, *effective = NULL;
+  if (decode_policy(context, base_path, &base) != MAELYS_CLI_EXIT_OK)
+    return MAELYS_CLI_EXIT_FAILURE;
+  if (decode_policy(context, restriction_path, &restriction) !=
+      MAELYS_CLI_EXIT_OK) {
+    maelys_mir_destroy(base);
+    return MAELYS_CLI_EXIT_FAILURE;
+  }
+  char base_digest[MAELYS_MIR_DIGEST_HEX_SIZE];
+  char restriction_digest[MAELYS_MIR_DIGEST_HEX_SIZE];
+  char *error = NULL;
+  maelys_mir_result_t result = maelys_mir_digest_hex(base, base_digest, &error);
+  if (result == MAELYS_MIR_OK)
+    result = maelys_mir_digest_hex(restriction, restriction_digest, &error);
+  if (result == MAELYS_MIR_OK)
+    result = maelys_mir_restrict(base, restriction, &effective, &error);
+  maelys_mir_destroy(base);
+  maelys_mir_destroy(restriction);
+  if (result != MAELYS_MIR_OK)
+    return fail_mir(context, result, error, restriction_path);
+  published_policy_t published;
+  int failed = publish_policy(context, effective, restriction_path, &published);
+  maelys_mir_destroy(effective);
+  if (failed)
+    return MAELYS_CLI_EXIT_FAILURE;
+
+  maelys_cli_json_writer_t data;
+  maelys_cli_json_writer_init(&data);
+  (void)maelys_cli_json_begin_object(&data);
+  (void)maelys_cli_json_key_string(&data, "mode", apply ? "apply" : "plan");
+  (void)maelys_cli_json_key_boolean(&data, "changed", apply);
+  (void)maelys_cli_json_key_string(&data, "base", base_path);
+  (void)maelys_cli_json_key_string(&data, "baseDigest", base_digest);
+  (void)maelys_cli_json_key_string(&data, "restriction", restriction_path);
+  (void)maelys_cli_json_key_string(&data, "restrictionDigest",
+                                   restriction_digest);
+  write_publication(&data, context, &published);
+  (void)maelys_cli_json_end_object(&data);
+  char human[512];
+  describe_publication(context, &published, human, sizeof(human));
+  return maelys_cli_succeed_writer(context, &data, human, MAELYS_CLI_EXIT_OK);
+}
+
+/* ---- capabilities (report, exit 2 when a check finds some missing) --------- */
+
+/* One name per capability bit, in bit order: the identifiers of
+ * maelys_sandbox_policy_capability_name(), which the handler maps back. */
+static const char *const capability_choices[] = {
+    "fs-read",          "fs-write",           "fs-deny",
+    "network-none",     "network-direct",     "network-mediated",
+    "process-tree",     "root-ephemeral-write", "network-require-tls-sni",
+    "network-private-addresses", "fs-protect-create", NULL};
+
+static const maelys_cli_option_t capabilities_options[] = {
+    {MAELYS_CLI_FLAG("check",
+                     "Compare the requirements with the capabilities given "
+                     "by --available, none if it is absent; exit 2 when "
+                     "some are missing.")},
+    {MAELYS_CLI_CHOICE("available",
+                       "Capability a backend is declared to offer; repeatable.",
+                       capability_choices),
+     .value_name = "CAPABILITY", .repeatable = 1, .depends_on = "check"},
+};
+
+static void write_capabilities(maelys_cli_json_writer_t *data, const char *key,
+                               maelys_sandbox_policy_capabilities_t set) {
+  (void)maelys_cli_json_key(data, key);
+  (void)maelys_cli_json_begin_array(data);
+  for (unsigned bit = 0; bit < 64u; ++bit) {
+    const char *name =
+        maelys_sandbox_policy_capability_name(UINT64_C(1) << bit);
+    if (name && (set & (UINT64_C(1) << bit)))
+      (void)maelys_cli_json_string(data, name);
+  }
+  (void)maelys_cli_json_end_array(data);
+}
+
+static size_t list_capabilities(maelys_sandbox_policy_capabilities_t set,
+                                char *out, size_t size) {
+  size_t used = 0u;
+  out[0] = '\0';
+  for (unsigned bit = 0; bit < 64u; ++bit) {
+    const char *name =
+        maelys_sandbox_policy_capability_name(UINT64_C(1) << bit);
+    if (!name || !(set & (UINT64_C(1) << bit)))
+      continue;
+    int written = snprintf(out + used, size - used, "%s%s", used ? ", " : "",
+                           name);
+    if (written < 0 || (size_t)written >= size - used)
+      break;
+    used += (size_t)written;
+  }
+  if (!used)
+    (void)snprintf(out, size, "none");
+  return used;
+}
+
+static int command_capabilities(maelys_cli_context_t *context) {
+  const char *path = maelys_cli_operand(context, 0u);
+  int check = maelys_cli_flag(context, "check");
+  maelys_sandbox_policy_capabilities_t available = 0;
+  size_t given = maelys_cli_option_count(context, "available");
+  for (size_t i = 0u; i < given; ++i) {
+    const char *name = maelys_cli_option_at(context, "available", i);
+    maelys_sandbox_policy_capabilities_t bit = 0;
+    for (unsigned b = 0; b < 64u && !bit; ++b) {
+      const char *known =
+          maelys_sandbox_policy_capability_name(UINT64_C(1) << b);
+      if (known && strcmp(known, name) == 0)
+        bit = UINT64_C(1) << b;
+    }
+    if (!bit)
+      return maelys_cli_fail(context, MAELYS_CLI_CODE_UNEXPECTED, NULL,
+                             "The catalog offers %s, which the library does "
+                             "not name.",
+                             name);
+    available |= bit;
+  }
+  maelys_mir_t *mir = NULL;
+  if (decode_policy(context, path, &mir) != MAELYS_CLI_EXIT_OK)
+    return MAELYS_CLI_EXIT_FAILURE;
+  char digest[MAELYS_MIR_DIGEST_HEX_SIZE];
+  char *error = NULL;
+  maelys_mir_result_t result = maelys_mir_digest_hex(mir, digest, &error);
+  if (result != MAELYS_MIR_OK) {
+    maelys_mir_destroy(mir);
+    return fail_mir(context, result, error, path);
+  }
+  maelys_sandbox_policy_capabilities_t required =
+      maelys_sandbox_policy_required_capabilities(mir);
+  /* What only resolution on a host can settle. A deny with missing:skip
+   * needs fs-protect-create exactly where its target is absent. */
+  maelys_sandbox_policy_capabilities_t resolution = 0;
+  for (size_t i = 0u; i < maelys_mir_fs_rule_count(mir); ++i) {
+    maelys_mir_fs_rule_view_t rule;
+    if (maelys_mir_fs_rule_at(mir, i, &rule) == MAELYS_MIR_OK &&
+        rule.access == MAELYS_MIR_FS_DENY &&
+        rule.missing == MAELYS_MIR_MISSING_SKIP)
+      resolution |= MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE;
+  }
+  maelys_mir_destroy(mir);
+  maelys_sandbox_policy_capabilities_t missing = required & ~available;
+
+  maelys_cli_json_writer_t data;
+  maelys_cli_json_writer_init(&data);
+  (void)maelys_cli_json_begin_object(&data);
+  (void)maelys_cli_json_key_string(&data, "policy", path);
+  (void)maelys_cli_json_key_string(&data, "digest", digest);
+  (void)maelys_cli_json_key_string(&data, "scope", "mir");
+  write_capabilities(&data, "required", required);
+  write_capabilities(&data, "resolutionMayRequire", resolution & ~required);
+  (void)maelys_cli_json_key_boolean(&data, "checked", check);
+  if (check) {
+    write_capabilities(&data, "available", available);
+    write_capabilities(&data, "missing", missing);
+    (void)maelys_cli_json_key_boolean(&data, "supported", missing == 0);
+  }
+  (void)maelys_cli_json_end_object(&data);
+
+  char names[512], later[128], lacking[512], human[1400];
+  (void)list_capabilities(required, names, sizeof(names));
+  (void)list_capabilities(resolution & ~required, later, sizeof(later));
+  (void)list_capabilities(missing, lacking, sizeof(lacking));
+  int used = snprintf(human, sizeof(human),
+                      "requires: %s\nresolution may require: %s", names, later);
+  if (check && used > 0 && (size_t)used < sizeof(human))
+    (void)snprintf(human + used, sizeof(human) - (size_t)used, "\nmissing: %s",
+                   lacking);
+  return maelys_cli_succeed_writer(
+      context, &data, human,
+      check && missing ? MAELYS_CLI_EXIT_VIOLATIONS : MAELYS_CLI_EXIT_OK);
 }
 
 /* ---- validate (report, exit 2 on violation) -------------------------------- */
@@ -292,8 +515,22 @@ static const maelys_cli_command_t commands[] = {
     {MAELYS_CLI_TRANSACTION("compile", "compile",
                             "Compile a JSON policy source into canonical MIR.",
                             command_compile),
-     MAELYS_CLI_OPERANDS(compile_operands), MAELYS_CLI_OPTIONS(compile_options),
+     MAELYS_CLI_OPERANDS(compile_operands), MAELYS_CLI_OPTIONS(publish_options),
      MAELYS_CLI_SCHEMA(policy_compile_schema)},
+    {MAELYS_CLI_TRANSACTION("restrict", "restrict",
+                            "Compose a restriction over a base policy; the "
+                            "result grants nothing the base did not.",
+                            command_restrict),
+     MAELYS_CLI_OPERANDS(restrict_operands), MAELYS_CLI_OPTIONS(publish_options),
+     MAELYS_CLI_SCHEMA(policy_restrict_schema)},
+    {MAELYS_CLI_READ("capabilities", "capabilities",
+                     "List the backend capabilities a policy requires, or "
+                     "check them against a declared set; exit 2 when some "
+                     "are missing.",
+                     command_capabilities),
+     MAELYS_CLI_OPERANDS(policy_operands),
+     MAELYS_CLI_OPTIONS(capabilities_options),
+     MAELYS_CLI_SCHEMA(policy_capabilities_schema)},
     {MAELYS_CLI_READ("validate", "validate",
                      "Check that a file is canonical MIR; exit 2 when it is not.",
                      command_validate),

@@ -25,6 +25,12 @@
   `.git` until a backend announces that capability; it used to compile and
   protect nothing. `missing: error` still fails, and an absent grant is still
   omitted;
+- add `maelys-policy restrict BASE RESTRICTION --output FILE`, a plan/apply
+  transaction over `maelys_mir_restrict`, and `maelys-policy capabilities
+  POLICY [--check [--available CAPABILITY...]]`, which lists what a policy
+  requires and what resolution may add, or checks a declared set and exits 2
+  naming every missing capability. A declared set is a declaration, not a
+  detection of the backend;
 - report every missing capability at once, by stable identifier
   (`maelys_sandbox_policy_capability_name()`), including those only resolution
   discovers (`maelys_sandbox_policy_resolved_capabilities()`).

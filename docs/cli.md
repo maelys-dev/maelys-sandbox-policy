@@ -14,6 +14,8 @@ Common contract: `agent-cli/v2`. For the machine-readable detail run
 | completion | `completion SHELL` | read | json-envelope | Print the shell completion script generated from the catalog. |
 | complete.candidates | `__complete [WORDS...]` | read | json-records | Return completion candidates for a partial command line. |
 | compile | `compile SOURCE --output FILE [--replace] [--apply]` | preview then apply with --apply | json-envelope | Compile a JSON policy source into canonical MIR. |
+| restrict | `restrict BASE RESTRICTION --output FILE [--replace] [--apply]` | preview then apply with --apply | json-envelope | Compose a restriction over a base policy; the result grants nothing the base did not. |
+| capabilities | `capabilities POLICY [--check] [--available CAPABILITY...]` | read | json-envelope | List the backend capabilities a policy requires, or check them against a declared set; exit 2 when some are missing. |
 | validate | `validate POLICY` | read | json-envelope | Check that a file is canonical MIR; exit 2 when it is not. |
 | hash | `hash POLICY` | read | json-envelope | Print the decision digest of canonical MIR. |
 | inspect | `inspect POLICY` | read | json-envelope | Render the non-normative JSON projection of canonical MIR. |

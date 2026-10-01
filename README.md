@@ -58,6 +58,9 @@ build/bin/maelys-policy validate policy.mir        # exit 2 when not canonical M
 build/bin/maelys-policy hash policy.mir
 build/bin/maelys-policy inspect policy.mir
 build/bin/maelys-policy artifact-hash examples/workspace.json
+build/bin/maelys-policy restrict policy.mir ceiling.mir --output effective.mir --apply
+build/bin/maelys-policy capabilities policy.mir    # what a backend must offer
+build/bin/maelys-policy capabilities policy.mir --check --available fs-read   # exit 2 if some are missing
 build/bin/maelys-policy describe --summary --format json --compact
 ```
 

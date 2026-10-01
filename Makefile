@@ -92,7 +92,7 @@ $(BUILD)/cli/maelys-policy.o: CPPFLAGS += -isystem $(MAELYS_CLI_DIR)/include -I$
 $(BUILD)/cli/maelys-policy.o: $(GENERATED)/policy_schemas.h | check-dependencies
 
 $(BUILD)/bin/maelys-policy: $(BUILD)/cli/maelys-policy.o $(BUILD)/generated/policy_schemas.o \
-		$(BUILD)/lib/libmaelys-mir.a $(MAELYS_CLI_LIB)
+		$(BUILD)/lib/libmaelys-sandbox-policy.a $(BUILD)/lib/libmaelys-mir.a $(MAELYS_CLI_LIB)
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $^ -o $@
 
