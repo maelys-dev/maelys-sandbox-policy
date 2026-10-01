@@ -1,0 +1,14 @@
+# A deny-write is absolute, as a deny is: a more specific write grant does
+# not reopen writing beneath it.
+rule write tree /w
+rule deny-write tree /w/a
+rule write tree /w/a/b
+node directory /w
+node directory /w/a
+node directory /w/a/b
+node file /w/a/b/out
+query /w/a/b read deny-write-rule
+query /w/a/b/out read deny-write-rule
+query /w read-write write-rule
+requires fs-deny-write
+compile accepted

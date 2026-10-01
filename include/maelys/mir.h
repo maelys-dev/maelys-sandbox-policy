@@ -12,7 +12,7 @@ extern "C" {
 /* The revision of this header, raised by every change to it, and the oldest
  * revision whose declarations all still hold unchanged. A consumer written
  * for revision N is served when COMPATIBLE_SINCE <= N <= VERSION. */
-#define MAELYS_MIR_ABI_VERSION 4u
+#define MAELYS_MIR_ABI_VERSION 5u
 #define MAELYS_MIR_ABI_COMPATIBLE_SINCE 3u
 #define MAELYS_MIR_DIGEST_HEX_SIZE 65u
 #define MAELYS_MIR_INSPECTION_FORMAT_VERSION 1u
@@ -39,10 +39,14 @@ typedef enum maelys_mir_result {
   MAELYS_MIR_ERR_CONFLICT = 9
 } maelys_mir_result_t;
 
+/* READ and WRITE grant; DENY removes every access; DENY_WRITE removes
+ * writing and grants nothing. On one target a rule keeps at most one grant
+ * and one DENY_WRITE, and a DENY replaces both. */
 typedef enum maelys_mir_fs_access {
   MAELYS_MIR_FS_READ = 1,
   MAELYS_MIR_FS_WRITE = 2,
-  MAELYS_MIR_FS_DENY = 3
+  MAELYS_MIR_FS_DENY = 3,
+  MAELYS_MIR_FS_DENY_WRITE = 4
 } maelys_mir_fs_access_t;
 
 typedef enum maelys_mir_path_root {
@@ -197,8 +201,8 @@ maelys_mir_result_t maelys_mir_inspect_json(const maelys_mir_t *mir,
 
 /*
  * Compose an untrusted/project restriction over a trusted base policy.
- * The restriction may add deny rules, narrow network access, or require
- * process-tree confinement. Any filesystem grant is rejected.
+ * The restriction may add deny and deny-write rules, narrow network access,
+ * or require process-tree confinement. Any filesystem grant is rejected.
  */
 maelys_mir_result_t maelys_mir_restrict(const maelys_mir_t *base,
                                         const maelys_mir_t *restriction,

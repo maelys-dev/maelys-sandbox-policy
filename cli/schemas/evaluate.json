@@ -65,7 +65,8 @@
         "default-deny",
         "deny-rule",
         "write-rule",
-        "read-rule"
+        "read-rule",
+        "deny-write-rule"
       ]
     },
     "applicableRules": {
@@ -86,7 +87,8 @@
           "enum": [
             "read",
             "write",
-            "deny"
+            "deny",
+            "deny-write"
           ]
         },
         "scope": {

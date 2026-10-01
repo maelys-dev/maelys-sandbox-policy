@@ -71,7 +71,8 @@
             "enum": [
               "read",
               "write",
-              "deny"
+              "deny",
+              "deny-write"
             ]
           },
           "scope": {
@@ -166,7 +167,8 @@
               "root-ephemeral-write",
               "network-require-tls-sni",
               "network-private-addresses",
-              "fs-protect-create"
+              "fs-protect-create",
+              "fs-deny-write"
             ]
           }
         },
@@ -187,7 +189,8 @@
               "root-ephemeral-write",
               "network-require-tls-sni",
               "network-private-addresses",
-              "fs-protect-create"
+              "fs-protect-create",
+              "fs-deny-write"
             ]
           }
         },
@@ -205,7 +208,8 @@
               "root-ephemeral-write",
               "network-require-tls-sni",
               "network-private-addresses",
-              "fs-protect-create"
+              "fs-protect-create",
+              "fs-deny-write"
             ]
           }
         },

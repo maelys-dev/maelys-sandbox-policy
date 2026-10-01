@@ -1,0 +1,14 @@
+# A read-only subtree of a writable tree: deny-write removes writing and
+# keeps the reading the write grant gives.
+rule write tree /workspace
+rule deny-write tree /workspace/.git
+node directory /workspace
+node directory /workspace/.git
+node file /workspace/.git/config
+node file /workspace/src/main.c
+query /workspace/.git read deny-write-rule
+query /workspace/.git/config read deny-write-rule
+query /workspace/src/main.c read-write write-rule
+query /workspace read-write write-rule
+requires fs-deny-write
+compile accepted

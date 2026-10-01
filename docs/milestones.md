@@ -18,6 +18,10 @@
 - **M6 — Root disposition:** MIR v3 makes `read-only` versus
   `ephemeral-write` a canonical, digest-covered decision. Scratch sizing and
   overlay implementation remain execution concerns and do not enter policy.
+- **M8 — Write removal:** a `deny-write` access removes writing from a path
+  and keeps the reading a grant gives, so a writable tree may hold a
+  read-only subtree. It is a fourth value of the access byte of MIR v3:
+  earlier decoders reject it and no existing digest changes.
 - **M7 — Destination flags:** each mediated destination carries canonical
   `requireTlsSni` and `allowPrivateAddresses` decisions, both off by default.
   They reuse zero bytes of the MIR v3 record, so unflagged policies keep their

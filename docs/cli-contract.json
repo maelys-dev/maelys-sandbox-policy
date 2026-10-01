@@ -608,7 +608,8 @@
                     "root-ephemeral-write",
                     "network-require-tls-sni",
                     "network-private-addresses",
-                    "fs-protect-create"
+                    "fs-protect-create",
+                    "fs-deny-write"
                   ],
                   "name": "CAPABILITY",
                   "type": "choice"
@@ -643,7 +644,8 @@
                     "root-ephemeral-write",
                     "network-require-tls-sni",
                     "network-private-addresses",
-                    "fs-protect-create"
+                    "fs-protect-create",
+                    "fs-deny-write"
                   ]
                 },
                 "type": "array"
@@ -668,7 +670,8 @@
                     "root-ephemeral-write",
                     "network-require-tls-sni",
                     "network-private-addresses",
-                    "fs-protect-create"
+                    "fs-protect-create",
+                    "fs-deny-write"
                   ]
                 },
                 "type": "array"
@@ -689,7 +692,8 @@
                     "root-ephemeral-write",
                     "network-require-tls-sni",
                     "network-private-addresses",
-                    "fs-protect-create"
+                    "fs-protect-create",
+                    "fs-deny-write"
                   ]
                 },
                 "type": "array"
@@ -707,7 +711,8 @@
                     "root-ephemeral-write",
                     "network-require-tls-sni",
                     "network-private-addresses",
-                    "fs-protect-create"
+                    "fs-protect-create",
+                    "fs-deny-write"
                   ]
                 },
                 "type": "array"
@@ -834,7 +839,8 @@
                     "root-ephemeral-write",
                     "network-require-tls-sni",
                     "network-private-addresses",
-                    "fs-protect-create"
+                    "fs-protect-create",
+                    "fs-deny-write"
                   ],
                   "name": "CAPABILITY",
                   "type": "choice"
@@ -895,7 +901,8 @@
                         "root-ephemeral-write",
                         "network-require-tls-sni",
                         "network-private-addresses",
-                        "fs-protect-create"
+                        "fs-protect-create",
+                        "fs-deny-write"
                       ]
                     },
                     "type": "array"
@@ -922,7 +929,8 @@
                         "root-ephemeral-write",
                         "network-require-tls-sni",
                         "network-private-addresses",
-                        "fs-protect-create"
+                        "fs-protect-create",
+                        "fs-deny-write"
                       ]
                     },
                     "type": "array"
@@ -940,7 +948,8 @@
                         "root-ephemeral-write",
                         "network-require-tls-sni",
                         "network-private-addresses",
-                        "fs-protect-create"
+                        "fs-protect-create",
+                        "fs-deny-write"
                       ]
                     },
                     "type": "array"
@@ -1046,7 +1055,8 @@
                       "enum": [
                         "read",
                         "write",
-                        "deny"
+                        "deny",
+                        "deny-write"
                       ]
                     },
                     "missing": {
@@ -1225,7 +1235,8 @@
                     "enum": [
                       "read",
                       "write",
-                      "deny"
+                      "deny",
+                      "deny-write"
                     ]
                   },
                   "missing": {
@@ -1277,7 +1288,8 @@
                   "default-deny",
                   "deny-rule",
                   "write-rule",
-                  "read-rule"
+                  "read-rule",
+                  "deny-write-rule"
                 ]
               },
               "scope": {
@@ -1459,7 +1471,8 @@
                               "enum": [
                                 "read",
                                 "write",
-                                "deny"
+                                "deny",
+                                "deny-write"
                               ]
                             },
                             "missing": {
@@ -1500,7 +1513,8 @@
                               "enum": [
                                 "read",
                                 "write",
-                                "deny"
+                                "deny",
+                                "deny-write"
                               ]
                             },
                             "missing": {
@@ -2498,7 +2512,8 @@
                           "enum": [
                             "read",
                             "write",
-                            "deny"
+                            "deny",
+                            "deny-write"
                           ]
                         },
                         "missing": {

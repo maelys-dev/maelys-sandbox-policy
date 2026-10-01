@@ -81,7 +81,7 @@
       "additionalProperties": false,
       "required": ["access", "path"],
       "properties": {
-        "access": {"enum": ["read", "write", "deny"]},
+        "access": {"enum": ["read", "write", "deny", "deny-write"]},
         "scope": {"enum": ["exact", "tree"], "default": "tree"},
         "missing": {"enum": ["error", "skip"], "default": "error"},
         "path": {"$ref": "#/$defs/path"}

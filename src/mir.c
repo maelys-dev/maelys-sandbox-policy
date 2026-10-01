@@ -8,7 +8,7 @@
 #define NETWORK_RECORD_FIXED_SIZE 8u
 
 static int valid_access(maelys_mir_fs_access_t v) {
-  return v >= MAELYS_MIR_FS_READ && v <= MAELYS_MIR_FS_DENY;
+  return v >= MAELYS_MIR_FS_READ && v <= MAELYS_MIR_FS_DENY_WRITE;
 }
 static int valid_root(maelys_mir_path_root_t v) {
   return v >= MAELYS_MIR_ROOT_MINIMAL_RUNTIME && v <= MAELYS_MIR_ROOT_HOST;
@@ -174,15 +174,31 @@ maelys_mir_result_t maelys_mir_builder_add_fs_rule(
       root, relative ? relative : "", &normalized, err);
   if (result != MAELYS_MIR_OK)
     return result;
-  for (size_t i = 0; i < b->rule_count; ++i) {
+  /* One target keeps at most one grant, the stronger of read and write, and
+   * one deny-write beside it; a deny replaces whatever the target held. */
+  int grant = access == MAELYS_MIR_FS_READ || access == MAELYS_MIR_FS_WRITE;
+  for (size_t i = 0; i < b->rule_count;) {
     maelys_mir_fs_rule_t candidate = {access, root, scope, missing, normalized};
-    if (same_target(&b->rules[i], &candidate)) {
-      /* Codex conflict precedence: deny > write > read. */
-      if (access > b->rules[i].access)
-        b->rules[i].access = access;
-      free(normalized);
+    maelys_mir_fs_rule_t *held = &b->rules[i];
+    if (!same_target(held, &candidate)) {
+      ++i;
+      continue;
+    }
+    int held_grant = held->access == MAELYS_MIR_FS_READ ||
+                     held->access == MAELYS_MIR_FS_WRITE;
+    if (held->access == MAELYS_MIR_FS_DENY || held->access == access ||
+        (grant && held_grant && held->access > access)) {
+      free(normalized); /* already said, or said more strongly */
       return MAELYS_MIR_OK;
     }
+    if (access == MAELYS_MIR_FS_DENY || (grant && held_grant)) {
+      /* The new rule takes this one's place; a deny goes on to take the
+       * place of the other rule of the target too. */
+      free(held->relative);
+      *held = b->rules[--b->rule_count];
+      continue;
+    }
+    ++i; /* a grant and a deny-write stand side by side */
   }
   if (b->rule_count == MAELYS_MIR_MAX_RULES) {
     free(normalized);
@@ -713,7 +729,8 @@ maelys_mir_result_t maelys_mir_restrict(const maelys_mir_t *base,
     return MAELYS_MIR_ERR_ARGUMENT;
   }
   for (size_t i = 0; i < restriction->rule_count; ++i) {
-    if (restriction->rules[i].access != MAELYS_MIR_FS_DENY) {
+    if (restriction->rules[i].access != MAELYS_MIR_FS_DENY &&
+        restriction->rules[i].access != MAELYS_MIR_FS_DENY_WRITE) {
       maelys_set_error(err, "restrictive overlay contains a filesystem grant");
       return MAELYS_MIR_ERR_UNSUPPORTED;
     }

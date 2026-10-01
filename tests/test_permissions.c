@@ -70,7 +70,7 @@ static int parse_permission(const char *text,
 }
 
 static int parse_reason(const char *text, maelys_sandbox_policy_reason_t *out) {
-  for (int value = 1; value <= 4; ++value) {
+  for (int value = 1; value <= 5; ++value) {
     if (strcmp(text, maelys_sandbox_policy_reason_name(
                          (maelys_sandbox_policy_reason_t)value)) == 0) {
       *out = (maelys_sandbox_policy_reason_t)value;
@@ -118,6 +118,7 @@ static void run_case(const char *file) {
   static node_t nodes[MAX_NODES];
   size_t node_count = 0;
   int compile_seen = 0, refused = 0, requires_protection = 0;
+  int requires_deny_write = 0;
   maelys_sandbox_policy_permission_t before = 0, after = 0;
   char line[512];
   while (fgets(line, sizeof(line), stream)) {
@@ -127,9 +128,10 @@ static void run_case(const char *file) {
       continue;
     if (sscanf(line, "rule %63s %63s %255s", a, b, c) == 3) {
       maelys_sandbox_policy_resolved_rule_t rule;
-      rule.access = strcmp(a, "read") == 0    ? MAELYS_MIR_FS_READ
-                    : strcmp(a, "write") == 0 ? MAELYS_MIR_FS_WRITE
-                                              : MAELYS_MIR_FS_DENY;
+      rule.access = strcmp(a, "read") == 0         ? MAELYS_MIR_FS_READ
+                    : strcmp(a, "write") == 0      ? MAELYS_MIR_FS_WRITE
+                    : strcmp(a, "deny-write") == 0 ? MAELYS_MIR_FS_DENY_WRITE
+                                                   : MAELYS_MIR_FS_DENY;
       rule.scope = strcmp(b, "tree") == 0 ? MAELYS_MIR_SCOPE_TREE
                                           : MAELYS_MIR_SCOPE_EXACT;
       if ((rule.access == MAELYS_MIR_FS_DENY && strcmp(a, "deny") != 0) ||
@@ -172,11 +174,14 @@ static void run_case(const char *file) {
       if (!parse_permission(a, &before) || !parse_permission(d, &after))
         FAIL_CASE("invalid compile expectation");
     } else if (sscanf(line, "requires %63s", a) == 1) {
-      const char *name = maelys_sandbox_policy_capability_name(
-          MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE);
-      if (strcmp(a, name) != 0)
+      if (strcmp(a, maelys_sandbox_policy_capability_name(
+                        MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE)) == 0)
+        requires_protection = 1;
+      else if (strcmp(a, maelys_sandbox_policy_capability_name(
+                             MAELYS_SANDBOX_POLICY_CAP_FS_DENY_WRITE)) == 0)
+        requires_deny_write = 1;
+      else
         FAIL_CASE("unknown capability %s", a);
-      requires_protection = 1;
     } else if (strcmp(line, "compile accepted\n") == 0) {
       compile_seen = 1;
     } else {
@@ -194,6 +199,10 @@ static void run_case(const char *file) {
     const node_t *node = find_node(nodes, node_count, plan->rules[i].path);
     int protect = plan->rules[i].missing ==
                   MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE;
+    if (plan->rules[i].missing == MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE &&
+        plan->rules[i].access != MAELYS_MIR_FS_DENY &&
+        plan->rules[i].access != MAELYS_MIR_FS_DENY_WRITE)
+      FAIL_CASE("protect-create on a rule that removes nothing");
     if (!node)
       FAIL_CASE("no node line for the rule path %s", plan->rules[i].path);
     else if (protect != (node->type == NODE_ABSENT))
@@ -218,14 +227,16 @@ static void run_case(const char *file) {
   /* A plan requires the protection exactly when a rule carries it. */
   int carries_protection = 0;
   for (size_t i = 0; i < plan->rule_count; ++i) {
-    if (plan->rules[i].missing == MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE) {
+    if (plan->rules[i].missing == MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE)
       carries_protection = 1;
-      if (plan->rules[i].access != MAELYS_MIR_FS_DENY)
-        FAIL_CASE("protect-create on a rule that is not a deny");
-    }
   }
   if (carries_protection != requires_protection)
     FAIL_CASE("the requires line and the protect-create rules disagree");
+  int carries_deny_write = 0;
+  for (size_t i = 0; i < plan->rule_count; ++i)
+    carries_deny_write |= plan->rules[i].access == MAELYS_MIR_FS_DENY_WRITE;
+  if (carries_deny_write != requires_deny_write)
+    FAIL_CASE("the requires line and the deny-write rules disagree");
 
   /* The contract holds for every order of the rules. */
   check_queries(file, plan->rules, plan->rule_count, queries, query_count,
@@ -238,9 +249,16 @@ static void run_case(const char *file) {
   check_queries(file, plan->rules, plan->rule_count, queries, query_count,
                 "reversed");
 
+  /* The migration check reads the rules contract 1 could express: a
+   * deny-write is left out, as the library leaves it out. */
+  static maelys_sandbox_policy_resolved_rule_t earlier[MAX_RULES];
+  size_t earlier_count = 0;
+  for (size_t i = 0; i < plan->rule_count; ++i)
+    if (plan->rules[i].access != MAELYS_MIR_FS_DENY_WRITE)
+      earlier[earlier_count++] = plan->rules[i];
   maelys_plan_conflict_t conflict;
   maelys_mir_result_t found =
-      maelys_plan_find_conflict(plan->rules, plan->rule_count, &conflict);
+      maelys_plan_find_conflict(earlier, earlier_count, &conflict);
   char *error = NULL;
   maelys_mir_result_t finalized =
       maelys_sandbox_policy_plan_finalize(plan, &error);
@@ -259,13 +277,15 @@ static void run_case(const char *file) {
       FAIL_CASE("unexpected refusal: %s", error ? error : "no diagnostic");
     check_queries(file, plan->rules, plan->rule_count, queries, query_count,
                   "plan");
-    /* Plan order: every grant, then every deny. */
-    int deny_seen = 0;
+    /* Plan order: every grant, then every deny-write, then every deny. */
+    int rank_seen = 0;
     for (size_t i = 0; i < plan->rule_count; ++i) {
-      if (plan->rules[i].access == MAELYS_MIR_FS_DENY)
-        deny_seen = 1;
-      else if (deny_seen)
-        FAIL_CASE("a grant follows a deny in plan order");
+      int rank = plan->rules[i].access == MAELYS_MIR_FS_DENY         ? 2
+                 : plan->rules[i].access == MAELYS_MIR_FS_DENY_WRITE ? 1
+                                                                     : 0;
+      if (rank < rank_seen)
+        FAIL_CASE("plan order is not grants, deny-writes, denies");
+      rank_seen = rank;
     }
   }
   free(conflict.witness);
@@ -571,7 +591,7 @@ static int independent_permission(
   const char *target[64], *named[64];
   size_t target_length[64], named_length[64];
   size_t target_count = split_components(path, target, target_length, 64u);
-  int denied = 0, written = 0, read = 0;
+  int denied = 0, written = 0, read = 0, write_removed = 0;
   for (size_t i = 0; i < count; ++i) {
     size_t named_count =
         split_components(rules[i].path, named, named_length, 64u);
@@ -587,19 +607,24 @@ static int independent_permission(
       continue;
     if (rules[i].access == MAELYS_MIR_FS_DENY)
       denied = 1;
+    else if (rules[i].access == MAELYS_MIR_FS_DENY_WRITE)
+      write_removed = 1;
     else if (rules[i].access == MAELYS_MIR_FS_WRITE)
       written = 1;
     else
       read = 1;
   }
-  return denied ? 0 : written ? 2 : read ? 1 : 0;
+  if (denied || (!written && !read))
+    return 0;
+  return written && !write_removed ? 2 : 1;
 }
 
 static void random_rules(maelys_sandbox_policy_resolved_rule_t *rules,
                          size_t count, const char *const *paths,
                          size_t path_count) {
   for (size_t i = 0; i < count; ++i) {
-    rules[i].access = (maelys_mir_fs_access_t)(1u + next_random() % 3u);
+    /* every access, deny-write included */
+    rules[i].access = (maelys_mir_fs_access_t)(1u + next_random() % 4u);
     rules[i].scope = (maelys_mir_path_scope_t)(1u + next_random() % 2u);
     rules[i].path = (char *)paths[next_random() % path_count];
     rules[i].missing = MAELYS_SANDBOX_POLICY_MISSING_ERROR;

@@ -74,6 +74,8 @@ static const char *access_name(maelys_mir_fs_access_t access) {
     return "write";
   case MAELYS_MIR_FS_DENY:
     return "deny";
+  case MAELYS_MIR_FS_DENY_WRITE:
+    return "deny-write";
   }
   return "unknown";
 }

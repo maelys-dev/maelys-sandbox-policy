@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+- add the access `deny-write`: it removes writing from a path and grants
+  nothing, so `write` on a tree with `deny-write` on a subtree leaves that
+  subtree readable and not writable, which no policy could say since 0.6.0.
+  It is absolute, as `deny` is: no write grant reopens writing beneath it,
+  and a restriction may add it. In MIR v3 it is the value 4 of the access
+  byte, which earlier decoders reject; no policy without it changes a byte
+  or a digest. One target keeps one grant and one `deny-write`, and a `deny`
+  replaces both;
+- a plan with a `deny-write` requires the new capability `fs-deny-write`,
+  and an absent target is kept with `missing = protect-create`, since
+  creating it is a write. The contract states what removing writing covers:
+  content, entries, metadata, and the path itself, which is neither removed,
+  renamed nor replaced. No Warden backend announces the capability yet, so
+  such a policy is refused before launch until one does;
+- **Consumer notice:** `maelys_mir_fs_access_t` gains
+  `MAELYS_MIR_FS_DENY_WRITE` and `maelys_sandbox_policy_reason_t` gains
+  `MAELYS_SANDBOX_POLICY_REASON_DENY_WRITE_RULE`. A `switch` over either
+  without a default stops compiling under `-Werror=switch`. Both are
+  additions: `MAELYS_MIR_ABI_VERSION` is 5, compatible since 3, and
+  `MAELYS_SANDBOX_POLICY_ABI_VERSION` is 7, compatible since 5;
+- corpus version 4: nine `deny-write` cases, and the obligations a backend
+  proves for a rule that removes access (refuse removal, renaming and
+  replacement of the target; hold after an ancestor is renamed). A hard link
+  made before the launch is a stated limit;
+- add the `deny-write` native/WASM/TypeScript conformance vector.
+
 ## 0.8.0 — 2026-10-01
 
 - **ABI numbers, regularised.** Each public header now carries two numbers:

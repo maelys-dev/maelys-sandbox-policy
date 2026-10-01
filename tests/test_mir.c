@@ -384,6 +384,126 @@ static void test_network_destination_flags(void) {
   maelys_mir_error_free(e);
 }
 
+static maelys_mir_t *compile_rules(const char *rules) {
+  char json[2048];
+  (void)snprintf(json, sizeof(json),
+                 "{\"formatVersion\":3,\"filesystem\":{\"default\":\"deny\","
+                 "\"rules\":[%s]},\"network\":{\"mode\":\"none\"},\"root\":"
+                 "{\"mode\":\"read-only\"},\"process\":{\"treeConfinement\":"
+                 "\"disabled\"}}",
+                 rules);
+  maelys_mir_t *mir = NULL;
+  char *error = NULL;
+  (void)maelys_mir_compile_json((const uint8_t *)json, strlen(json), &mir,
+                                &error);
+  maelys_mir_error_free(error);
+  return mir;
+}
+
+/* The accesses a policy keeps on workspace/a, in canonical order. */
+static void expect_accesses(const char *rules, const char *expected) {
+  maelys_mir_t *mir = compile_rules(rules);
+  char got[16] = "";
+  size_t used = 0;
+  CHECK(mir != NULL);
+  for (size_t i = 0; i < maelys_mir_fs_rule_count(mir); ++i) {
+    maelys_mir_fs_rule_view_t rule;
+    CHECK_OK(maelys_mir_fs_rule_at(mir, i, &rule));
+    if (strcmp(rule.relative, "a") == 0 && used + 1u < sizeof(got))
+      got[used++] = (char)('0' + (int)rule.access);
+  }
+  got[used] = '\0';
+  if (strcmp(got, expected) != 0) {
+    fprintf(stderr, "FAIL %s: [%s] keeps accesses %s, expected %s\n", __FILE__,
+            rules, got, expected);
+    ++failures;
+  }
+  /* canonical bytes survive a round trip unchanged */
+  uint8_t *bytes = NULL;
+  size_t size = 0;
+  char *e = NULL;
+  maelys_mir_t *decoded = NULL;
+  CHECK_OK(maelys_mir_encode(mir, &bytes, &size, &e));
+  CHECK_OK(maelys_mir_decode(bytes, size, &decoded, &e));
+  maelys_mir_bytes_free(bytes);
+  maelys_mir_destroy(decoded);
+  maelys_mir_destroy(mir);
+  maelys_mir_error_free(e);
+}
+
+#define RULE(access)                                                           \
+  "{\"access\":\"" access "\",\"path\":{\"root\":\"workspace\",\"relative\":\"a\"}}"
+
+static void test_deny_write(void) {
+  /* 1 read, 2 write, 3 deny, 4 deny-write. One target keeps one grant and
+   * one deny-write; a deny replaces both, whatever the order given. */
+  expect_accesses(RULE("deny-write"), "4");
+  expect_accesses(RULE("write") "," RULE("deny-write"), "24");
+  expect_accesses(RULE("deny-write") "," RULE("write"), "24");
+  expect_accesses(RULE("read") "," RULE("deny-write"), "14");
+  expect_accesses(RULE("read") "," RULE("deny-write") "," RULE("write"), "24");
+  expect_accesses(RULE("write") "," RULE("deny-write") "," RULE("read"), "24");
+  expect_accesses(RULE("deny-write") "," RULE("deny-write"), "4");
+  expect_accesses(RULE("write") "," RULE("deny-write") "," RULE("deny"), "3");
+  expect_accesses(RULE("deny") "," RULE("deny-write") "," RULE("write"), "3");
+  expect_accesses(RULE("deny") "," RULE("deny-write"), "3");
+
+  /* Same permissions, same bytes: the order of the source does not show. */
+  maelys_mir_t *one = compile_rules(RULE("write") "," RULE("deny-write"));
+  maelys_mir_t *two = compile_rules(RULE("deny-write") "," RULE("read") ","
+                                    RULE("write"));
+  char first[65], second[65];
+  char *e = NULL;
+  CHECK_OK(maelys_mir_digest_hex(one, first, &e));
+  CHECK_OK(maelys_mir_digest_hex(two, second, &e));
+  CHECK(strcmp(first, second) == 0);
+
+  /* Bytes that hold a target otherwise are not canonical: the deny-write
+   * before its grant, and a deny beside a deny-write. */
+  uint8_t *bytes = NULL;
+  size_t size = 0;
+  CHECK_OK(maelys_mir_encode(one, &bytes, &size, &e));
+  /* two records of 12 + 1 bytes follow the 20-byte header */
+  CHECK(size == 20u + 2u * 13u && bytes[21] == 2u && bytes[34] == 4u);
+  bytes[21] = 4u;
+  bytes[34] = 2u;
+  CHECK(maelys_mir_check_canonical(bytes, size, &e) ==
+        MAELYS_MIR_ERR_NON_CANONICAL);
+  maelys_mir_error_free(e);
+  e = NULL;
+  bytes[21] = 3u;
+  bytes[34] = 4u;
+  CHECK(maelys_mir_check_canonical(bytes, size, &e) ==
+        MAELYS_MIR_ERR_NON_CANONICAL);
+  maelys_mir_error_free(e);
+  e = NULL;
+  bytes[21] = 5u; /* no fifth access */
+  CHECK(maelys_mir_check_canonical(bytes, size, &e) == MAELYS_MIR_ERR_FORMAT);
+  maelys_mir_error_free(e);
+  e = NULL;
+  maelys_mir_bytes_free(bytes);
+
+  /* A restriction may remove writing; it may still not grant. */
+  maelys_mir_t *base = compile_rules(RULE("write"));
+  maelys_mir_t *ceiling = compile_rules(RULE("deny-write"));
+  maelys_mir_t *effective = NULL;
+  CHECK_OK(maelys_mir_restrict(base, ceiling, &effective, &e));
+  CHECK(maelys_mir_fs_rule_count(effective) == 2u);
+  char restricted[65];
+  CHECK_OK(maelys_mir_digest_hex(effective, restricted, &e));
+  CHECK(strcmp(restricted, first) == 0);
+  maelys_mir_destroy(effective);
+  effective = NULL;
+  CHECK(maelys_mir_restrict(ceiling, one, &effective, &e) ==
+        MAELYS_MIR_ERR_UNSUPPORTED);
+  maelys_mir_error_free(e);
+  maelys_mir_destroy(ceiling);
+  maelys_mir_destroy(base);
+  maelys_mir_destroy(two);
+  maelys_mir_destroy(one);
+}
+#undef RULE
+
 static void test_noncanonical(void) {
   maelys_mir_t *m = build_order(0);
   uint8_t *bytes = NULL;
@@ -443,6 +563,7 @@ int main(void) {
   test_json();
   test_network_allowlist();
   test_network_destination_flags();
+  test_deny_write();
   test_artifact_digest();
   test_noncanonical();
   test_restrictive_overlay();

@@ -153,7 +153,7 @@ grep -q '"code":"VALIDATION_FAILED"' "$tmp_dir/caps-unknown.json" || fail 'unkno
 # Every capability the catalog offers is one the library names.
 "$cli" describe capabilities --format json --compact |
   sed 's/.*"choices":\[\([^]]*\)\].*/\1/' | tr -d '"' | tr ',' '\n' >"$tmp_dir/choices.txt"
-test "$(wc -l <"$tmp_dir/choices.txt" | tr -d ' ')" = 11 || fail 'capability choices'
+test "$(wc -l <"$tmp_dir/choices.txt" | tr -d ' ')" = 12 || fail 'capability choices'
 while read -r capability; do
   status=0
   "$cli" capabilities "$tmp_dir/policy.mir" --check --available "$capability" >/dev/null 2>&1 || status=$?
@@ -425,3 +425,32 @@ grep -q '"analysed":\["filesystem","network","root","process"\]' "$tmp_dir/conta
   fail 'contains scope'
 both_invalid diff "$tmp_dir/no-such.mir" "$tmp_dir/also-missing.mir"
 both_invalid overlaps "$tmp_dir/no-such.mir" "$tmp_dir/also-missing.mir"
+
+# ---- deny-write: a read-only subtree of a writable tree -------------------------
+policy_from readonly-git '{"formatVersion":3,"filesystem":{"default":"deny","rules":[{"access":"write","path":{"root":"workspace","relative":""}},{"access":"deny-write","path":{"root":"workspace","relative":".git"}}]},"network":{"mode":"none"}'"$tail_json"
+"$cli" inspect "$tmp_dir/readonly-git.mir" | grep -q '"access": "deny-write"' || fail 'inspect deny-write'
+"$cli" capabilities "$tmp_dir/readonly-git.mir" --format json --compact |
+  grep -q '"required":\["fs-write","network-none","process-tree","fs-deny-write"\]' ||
+  fail 'deny-write capability'
+"$cli" evaluate "$tmp_dir/readonly-git.mir" --workspace "$tmp_dir/ws" --path "$workspace/.git/config" \
+  --format json --compact >"$tmp_dir/eval-denywrite.json"
+grep -q '"permission":"read","reason":"deny-write-rule"' "$tmp_dir/eval-denywrite.json" || fail 'evaluate deny-write'
+grep -q '"decisiveRule":{"access":"deny-write","scope":"tree"' "$tmp_dir/eval-denywrite.json" ||
+  fail 'evaluate deny-write deciding rule'
+test "$("$cli" evaluate "$tmp_dir/readonly-git.mir" --workspace "$tmp_dir/ws" \
+  --path "$workspace/src/main.c" --field permission)" = read-write || fail 'evaluate beside deny-write'
+"$cli" resolve "$tmp_dir/readonly-git.mir" --workspace "$tmp_dir/ws" --format json --compact |
+  grep -q "{\"access\":\"deny-write\",\"scope\":\"tree\",\"path\":\"$workspace/.git\",\"missing\":\"error\"}" ||
+  fail 'resolve deny-write'
+# It is within the policy that writes everything, and narrows it.
+contains wider readonly-git >/dev/null && fail 'a readable .git is within a boundary that denies it'
+pair diff wider readonly-git >"$tmp_dir/diff-denywrite.json"
+grep -q "{\"path\":\"$workspace/.git\",\"self\":{\"before\":\"none\",\"after\":\"read\"}" "$tmp_dir/diff-denywrite.json" ||
+  fail 'diff from deny to deny-write'
+# A restriction may remove writing.
+policy_from no-write-git '{"formatVersion":3,"filesystem":{"default":"deny","rules":[{"access":"deny-write","path":{"root":"workspace","relative":".git"}}]},"network":{"mode":"none"}'"$tail_json"
+policy_from writer '{"formatVersion":3,"filesystem":{"default":"deny","rules":[{"access":"write","path":{"root":"workspace","relative":""}}]},"network":{"mode":"none"}'"$tail_json"
+"$cli" restrict "$tmp_dir/writer.mir" "$tmp_dir/no-write-git.mir" --output "$tmp_dir/restricted.mir" --apply >/dev/null
+test "$("$cli" hash "$tmp_dir/restricted.mir" --field digest)" = "$("$cli" hash "$tmp_dir/readonly-git.mir" --field digest)" ||
+  fail 'restricting by a deny-write gives another policy than writing it'
+contains writer restricted | grep -q '"contained":true' || fail 'a restricted policy exceeds its base'

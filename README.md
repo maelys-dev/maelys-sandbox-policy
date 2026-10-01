@@ -75,6 +75,11 @@ diagnostic of that resolution, never a policy identity, and it proves
 nothing about what a backend installed. `evaluate` takes `--path` as written,
 as a resolved path: it follows no link.
 
+A rule is `read`, `write`, `deny` or `deny-write`. The last removes writing
+and keeps reading: `write` on the workspace with `deny-write` on `.git`
+leaves `.git` readable and not writable. It needs the backend capability
+`fs-deny-write`.
+
 `examples/workspace.json` denies `.git` with `missing: skip`. Where the
 workspace has no `.git`, the resolved plan requires the backend capability
 `fs-protect-create`; a backend that does not announce it refuses the launch

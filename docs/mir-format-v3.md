@@ -25,7 +25,7 @@ Each record has a 12-byte prefix followed by `path_length` path bytes.
 | Offset | Size | Meaning |
 |---:|---:|---|
 | 0 | 1 | record kind, exactly `1` |
-| 1 | 1 | access: `1 read`, `2 write`, `3 deny` |
+| 1 | 1 | access: `1 read`, `2 write`, `3 deny`, `4 deny-write` |
 | 2 | 1 | root: `1 minimal-runtime`, `2 workspace`, `3 temp`, `4 host` |
 | 3 | 1 | scope: `1 exact`, `2 tree` |
 | 4 | 1 | missing: `1 error`, `2 skip` |
@@ -33,9 +33,14 @@ Each record has a 12-byte prefix followed by `path_length` path bytes.
 | 8 | 4 | path length |
 | 12 | N | normalized path bytes |
 
-Filesystem records are sorted by `(root, path, scope, missing, access)`. For an
-identical target, `deny > write > read`. Filesystem access is deny-default and
-write implies read.
+Filesystem records are sorted by `(root, path, scope, missing, access)`. An
+identical target holds one grant at most, `write` over `read`, and one
+`deny-write` at most after it; a `deny` replaces both and stands alone.
+Filesystem access is deny-default and write implies read.
+
+`deny-write` (0.9.0) is a value of the access byte that earlier decoders
+reject, so a policy that uses it fails closed on them, and no policy
+without it changes a byte.
 
 What the records of a policy grant together is defined by the
 [permission contract](permission-contract.md): a deny is absolute, grants are

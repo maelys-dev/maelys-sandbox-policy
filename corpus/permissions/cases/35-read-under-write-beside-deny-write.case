@@ -1,0 +1,13 @@
+# The migration check judges the grants and denies by themselves: a read
+# under a write is still ambiguous with a deny-write beside it, and is
+# refused. Drop the read rule; the deny-write says what was meant.
+rule write tree /w
+rule read tree /w/vendor
+rule deny-write tree /w/vendor
+node directory /w
+node directory /w/vendor
+node file /w/vendor/lib.c
+query /w/vendor/lib.c read deny-write-rule
+query /w read-write write-rule
+requires fs-deny-write
+compile refused before=read after=read-write
