@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 — 2026-10-01
+
+Additive: the MIR format, existing digests and the SandboxPlan ABI (5) are
+unchanged, and no policy accepted by 0.6.0 is refused.
 
 - fix the cost of the precedence-conflict search of
   `maelys_sandbox_policy_compile`, which grew with the square of the resolved
@@ -21,6 +24,9 @@
   comparison is exact for the permissions of the two plans; whether a
   filesystem witness can be realised on the host is not established, and the
   answer holds for one host context and one state of the filesystem;
+- `maelys-policy resolve` and `evaluate` validate the host context before
+  they read the policy file, as `contains` does: with both invalid, the
+  context is what is reported;
 - document the resource bounds of compilation in `docs/api-contract.md` and
   add `make bench`, which measures them. No limit is added or lowered.
 
