@@ -1,4 +1,4 @@
-# Milestones implemented through 0.7.0
+# Milestones implemented through 0.8.0
 
 ## MIR track
 
@@ -40,6 +40,9 @@
   does not, exactly for the two plans and with a witness per dimension;
   conflict search and containment in N log N over the resolved rules, with
   measured resource bounds.
+- **S6 — Difference and overlap:** what changes between two resolved plans,
+  their equivalence, and whether both grant a common access; execution
+  constraints compared under a contract of their own.
 
 Backends and process launch do not belong to this repository. Maelys Warden
 consumes `SandboxPlan` through an adapter and owns Seatbelt/Bubblewrap

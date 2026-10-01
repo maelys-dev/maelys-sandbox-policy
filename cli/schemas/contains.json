@@ -9,6 +9,7 @@
     "scope",
     "permissionContract",
     "context",
+    "analysed",
     "contained",
     "exceeds"
   ],
@@ -264,6 +265,17 @@
               }
             }
           }
+        ]
+      }
+    },
+    "analysed": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "filesystem",
+          "network",
+          "root",
+          "process"
         ]
       }
     }

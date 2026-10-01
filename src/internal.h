@@ -131,6 +131,30 @@ maelys_mir_result_t maelys_plan_filesystem_excess_reference(
     const maelys_sandbox_policy_resolved_rule_t *boundary, size_t boundary_count,
     const maelys_sandbox_policy_resolved_rule_t *candidate,
     size_t candidate_count, char **out_witness);
+/* One region of two rule sets: a path their rules name. `self` is what each
+ * set grants on the path, `below` on its descendants that no rule names nor
+ * lies above, `inherited` what the nearest named path above it grants below
+ * itself (nothing when there is none). */
+typedef struct maelys_plan_region {
+  const char *path;
+  maelys_sandbox_policy_permission_t self[2];
+  maelys_sandbox_policy_permission_t below[2];
+  maelys_sandbox_policy_permission_t inherited[2];
+} maelys_plan_region_t;
+typedef int (*maelys_plan_region_visit_t)(const maelys_plan_region_t *region,
+                                          void *context);
+maelys_mir_result_t maelys_plan_walk_regions(
+    const maelys_sandbox_policy_resolved_rule_t *first, size_t first_count,
+    const maelys_sandbox_policy_resolved_rule_t *second, size_t second_count,
+    maelys_plan_region_visit_t visit, void *context);
+char *maelys_plan_region_witness(
+    const maelys_sandbox_policy_resolved_rule_t *first, size_t first_count,
+    const maelys_sandbox_policy_resolved_rule_t *second, size_t second_count,
+    const char *base, int below);
+maelys_sandbox_policy_network_excess_t
+maelys_plan_network_excess(const maelys_sandbox_policy_plan_t *boundary,
+                           const maelys_sandbox_policy_plan_t *candidate,
+                           size_t *out_destination);
 /* Refuses a precedence conflict, then puts the rules in plan order. */
 maelys_mir_result_t
 maelys_sandbox_policy_plan_finalize(maelys_sandbox_policy_plan_t *plan,

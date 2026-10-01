@@ -113,18 +113,18 @@ typedef struct tree_state {
   unsigned accesses[2];
 } tree_state_t;
 
-/* The same answer in one pass over the paths in component order, with the
- * stack of the paths above the current one. */
-maelys_mir_result_t maelys_plan_filesystem_excess(
-    const maelys_sandbox_policy_resolved_rule_t *boundary, size_t n,
-    const maelys_sandbox_policy_resolved_rule_t *candidate, size_t m,
-    char **out) {
-  *out = NULL;
+/* Every region of two rule sets, in component order of the paths their
+ * rules name: one pass, with the stack of the paths above the current one.
+ * `visit` returning nonzero ends the walk. */
+maelys_mir_result_t maelys_plan_walk_regions(
+    const maelys_sandbox_policy_resolved_rule_t *first, size_t n,
+    const maelys_sandbox_policy_resolved_rule_t *second, size_t m,
+    maelys_plan_region_visit_t visit, void *context) {
   size_t total = n + m;
   if (total == 0u)
     return MAELYS_MIR_OK;
   maelys_sandbox_policy_resolved_rule_t *merged =
-      merge_rules(boundary, n, candidate, m);
+      merge_rules(first, n, second, m);
   ordered_rule_t *order = malloc(total * sizeof(*order));
   tree_state_t *stack = malloc(total * sizeof(*stack));
   if (!merged || !order || !stack) {
@@ -137,17 +137,16 @@ maelys_mir_result_t maelys_plan_filesystem_excess(
     order[i] = (ordered_rule_t){merged[i].path, i};
   qsort(order, total, sizeof(*order), by_component_order);
 
-  const char *base = NULL;
-  int below_base = 0;
   size_t depth = 0;
-  for (size_t first = 0, next; first < total && !base; first = next) {
-    const char *path = order[first].path;
+  int stop = 0;
+  for (size_t start = 0, next; start < total && !stop; start = next) {
+    const char *path = order[start].path;
     unsigned exact[2] = {0u, 0u}, tree[2] = {0u, 0u};
-    for (next = first; next < total && strcmp(order[next].path, path) == 0;
+    for (next = start; next < total && strcmp(order[next].path, path) == 0;
          ++next) {
       const maelys_sandbox_policy_resolved_rule_t *rule =
           &merged[order[next].index];
-      unsigned side = order[next].index < n ? BOUNDARY : CANDIDATE;
+      unsigned side = order[next].index < n ? 0u : 1u;
       if (rule->scope == MAELYS_MIR_SCOPE_TREE)
         tree[side] |= MAELYS_ACCESS_BIT(rule->access);
       else
@@ -155,43 +154,80 @@ maelys_mir_result_t maelys_plan_filesystem_excess(
     }
     while (depth && !maelys_path_strictly_above(stack[depth - 1u].path, path))
       --depth;
-    unsigned inherited[2] = {depth ? stack[depth - 1u].accesses[BOUNDARY] : 0u,
-                             depth ? stack[depth - 1u].accesses[CANDIDATE] : 0u};
-    unsigned under[2] = {inherited[BOUNDARY] | tree[BOUNDARY],
-                         inherited[CANDIDATE] | tree[CANDIDATE]};
-    if (maelys_contract_permission(under[CANDIDATE] | exact[CANDIDATE]) >
-        maelys_contract_permission(under[BOUNDARY] | exact[BOUNDARY])) {
-      base = path;
-    } else if (maelys_contract_permission(under[CANDIDATE]) >
-               maelys_contract_permission(under[BOUNDARY])) {
-      base = path;
-      below_base = 1;
+    maelys_plan_region_t region;
+    region.path = path;
+    unsigned under[2];
+    for (unsigned side = 0; side < 2u; ++side) {
+      unsigned inherited = depth ? stack[depth - 1u].accesses[side] : 0u;
+      under[side] = inherited | tree[side];
+      region.inherited[side] = maelys_contract_permission(inherited);
+      region.below[side] = maelys_contract_permission(under[side]);
+      region.self[side] = maelys_contract_permission(under[side] | exact[side]);
     }
-    stack[depth++] = (tree_state_t){path, {under[BOUNDARY], under[CANDIDATE]}};
-  }
-  free(order);
-  free(stack);
-
-  maelys_mir_result_t result = MAELYS_MIR_OK;
-  if (base) {
-    char *witness = below_base
-                        ? maelys_plan_descendant_witness(merged, total, base)
-                        : maelys_strdup(base);
-    if (!witness) {
-      result = MAELYS_MIR_ERR_MEMORY;
-    } else if (exceeds_at(boundary, n, candidate, m, witness)) {
-      *out = witness;
-    } else {
-      /* The pass and the definition disagree, which no input should
-       * produce: let the definition decide. */
-      free(witness);
-      free(merged);
-      return maelys_plan_filesystem_excess_reference(boundary, n, candidate, m,
-                                                     out);
-    }
+    stop = visit(&region, context);
+    stack[depth++] = (tree_state_t){path, {under[0], under[1]}};
   }
   free(merged);
-  return result;
+  free(order);
+  free(stack);
+  return MAELYS_MIR_OK;
+}
+
+typedef struct excess_search {
+  const char *base;
+  int below;
+} excess_search_t;
+
+static int first_excess(const maelys_plan_region_t *region, void *context) {
+  excess_search_t *search = context;
+  if (region->self[CANDIDATE] > region->self[BOUNDARY]) {
+    search->base = region->path;
+  } else if (region->below[CANDIDATE] > region->below[BOUNDARY]) {
+    search->base = region->path;
+    search->below = 1;
+  }
+  return search->base != NULL;
+}
+
+/* A witness of one region: the path itself, or an unnamed descendant of it
+ * in the union of both rule sets. NULL when out of memory. */
+char *maelys_plan_region_witness(
+    const maelys_sandbox_policy_resolved_rule_t *first, size_t n,
+    const maelys_sandbox_policy_resolved_rule_t *second, size_t m,
+    const char *base, int below) {
+  if (!below)
+    return maelys_strdup(base);
+  maelys_sandbox_policy_resolved_rule_t *merged =
+      merge_rules(first, n, second, m);
+  if (!merged)
+    return NULL;
+  char *witness = maelys_plan_descendant_witness(merged, n + m, base);
+  free(merged);
+  return witness;
+}
+
+maelys_mir_result_t maelys_plan_filesystem_excess(
+    const maelys_sandbox_policy_resolved_rule_t *boundary, size_t n,
+    const maelys_sandbox_policy_resolved_rule_t *candidate, size_t m,
+    char **out) {
+  *out = NULL;
+  excess_search_t search = {NULL, 0};
+  maelys_mir_result_t result = maelys_plan_walk_regions(
+      boundary, n, candidate, m, first_excess, &search);
+  if (result != MAELYS_MIR_OK || !search.base)
+    return result;
+  char *witness = maelys_plan_region_witness(boundary, n, candidate, m,
+                                             search.base, search.below);
+  if (!witness)
+    return MAELYS_MIR_ERR_MEMORY;
+  if (exceeds_at(boundary, n, candidate, m, witness)) {
+    *out = witness;
+    return MAELYS_MIR_OK;
+  }
+  /* The pass and the definition disagree, which no input should produce:
+   * let the definition decide. */
+  free(witness);
+  return maelys_plan_filesystem_excess_reference(boundary, n, candidate, m, out);
 }
 
 static int network_rank(maelys_mir_network_mode_t mode) {
@@ -200,20 +236,18 @@ static int network_rank(maelys_mir_network_mode_t mode) {
                                                : 2;
 }
 
-static void network_excess(const maelys_sandbox_policy_plan_t *boundary,
+maelys_sandbox_policy_network_excess_t
+maelys_plan_network_excess(const maelys_sandbox_policy_plan_t *boundary,
                            const maelys_sandbox_policy_plan_t *candidate,
-                           maelys_sandbox_policy_containment_t *out) {
-  out->network = MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_NONE;
-  out->candidate_destination = SIZE_MAX;
-  if (network_rank(candidate->network) > network_rank(boundary->network)) {
-    out->network = MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_MODE;
-    return;
-  }
+                           size_t *out_destination) {
+  *out_destination = SIZE_MAX;
+  if (network_rank(candidate->network) > network_rank(boundary->network))
+    return MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_MODE;
   /* A direct boundary allows every destination; a candidate without
    * mediation names none. */
   if (boundary->network != MAELYS_MIR_NETWORK_MEDIATED ||
       candidate->network != MAELYS_MIR_NETWORK_MEDIATED)
-    return;
+    return MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_NONE;
   for (size_t i = 0; i < candidate->network_destination_count; ++i) {
     const maelys_mir_network_destination_t *asked =
         &candidate->network_destinations[i];
@@ -239,11 +273,11 @@ static void network_excess(const maelys_sandbox_policy_plan_t *boundary,
                MAELYS_MIR_NETWORK_DESTINATION_ALLOW_PRIVATE_ADDRESSES))
       excess = MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_PRIVATE_ADDRESSES;
     if (excess) {
-      out->network = excess;
-      out->candidate_destination = i;
-      return;
+      *out_destination = i;
+      return excess;
     }
   }
+  return MAELYS_SANDBOX_POLICY_NETWORK_EXCESS_NONE;
 }
 
 void maelys_sandbox_policy_containment_clear(
@@ -287,7 +321,8 @@ maelys_mir_result_t maelys_sandbox_policy_plan_contains(
     out->boundary_rule = allowed.decisive_rule;
     out->candidate_rule = asked.decisive_rule;
   }
-  network_excess(boundary, candidate, out);
+  out->network =
+      maelys_plan_network_excess(boundary, candidate, &out->candidate_destination);
   if (out->network)
     out->exceeds |= MAELYS_SANDBOX_POLICY_DIMENSION_NETWORK;
   if (candidate->root_mode == MAELYS_MIR_ROOT_EPHEMERAL_WRITE &&

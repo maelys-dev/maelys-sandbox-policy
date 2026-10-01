@@ -719,6 +719,173 @@ static void test_containment_matches_reference(void) {
         witness == NULL);
 }
 
+/* Is `ancestor` strictly above `path`, by components? Independent of the
+ * library, as independent_permission() is. */
+static int independent_above(const char *ancestor, const char *path) {
+  const char *upper[64], *lower[64];
+  size_t upper_length[64], lower_length[64];
+  size_t upper_count = split_components(ancestor, upper, upper_length, 64u);
+  size_t lower_count = split_components(path, lower, lower_length, 64u);
+  if (upper_count >= lower_count)
+    return 0;
+  for (size_t c = 0; c < upper_count; ++c)
+    if (upper_length[c] != lower_length[c] ||
+        memcmp(upper[c], lower[c], upper_length[c]) != 0)
+      return 0;
+  return 1;
+}
+
+static void fake_plan(maelys_sandbox_policy_plan_t *plan,
+                      maelys_sandbox_policy_resolved_rule_t *rules,
+                      size_t count) {
+  memset(plan, 0, sizeof(*plan));
+  plan->rules = rules;
+  plan->rule_count = count;
+  plan->network = MAELYS_MIR_NETWORK_NONE;
+  plan->root_mode = MAELYS_MIR_ROOT_READ_ONLY;
+}
+
+/* The diff and the overlap of two plans, checked on every path of the small
+ * universe against the independent evaluator. A diff must let a reader
+ * recover every change: the entry of a path states what both plans grant on
+ * it; otherwise the `below` of the deepest entry above it does when its two
+ * permissions differ; otherwise the path is unchanged. */
+static void test_diff_and_overlap_are_exact(void) {
+  static const char *const paths[] = {"/",      "/a",     "/b",     "/a/a",
+                                      "/a/b",   "/b/a",   "/a/a/a", "/a/a/b",
+                                      "/a/b/a", "/b/a/b"};
+  static const char *const names[] = {"a", "b", "c"};
+  unsigned equivalent = 0, different = 0, overlapping = 0, disjoint = 0;
+  for (unsigned round = 0; round < 30000u; ++round) {
+    maelys_sandbox_policy_resolved_rule_t before_rules[5], after_rules[5];
+    size_t n = next_random() % 6u, m = next_random() % 6u;
+    random_rules(before_rules, n, paths, 10u);
+    random_rules(after_rules, m, paths, 10u);
+    maelys_sandbox_policy_plan_t before, after;
+    fake_plan(&before, before_rules, n);
+    fake_plan(&after, after_rules, m);
+    maelys_sandbox_policy_diff_t *diff = NULL;
+    maelys_sandbox_policy_overlap_t overlap;
+    CHECK(maelys_sandbox_policy_plan_diff(&before, &after, &diff, NULL) ==
+          MAELYS_MIR_OK);
+    CHECK(maelys_sandbox_policy_plan_overlaps(&before, &after, &overlap, NULL) ==
+          MAELYS_MIR_OK);
+    int widens = 0, narrows = 0, both_read = 0, both_write = 0;
+    for (unsigned depth = 0; depth <= 4u; ++depth) {
+      unsigned total = 1;
+      for (unsigned i = 0; i < depth; ++i)
+        total *= 3u;
+      for (unsigned index = 0; index < total; ++index) {
+        char path[32] = "/";
+        size_t used = depth ? 0u : 1u;
+        unsigned rest = index;
+        for (unsigned i = 0; i < depth; ++i, rest /= 3u)
+          used += (size_t)snprintf(path + used, sizeof(path) - used, "/%s",
+                                   names[rest % 3u]);
+        int was = independent_permission(before_rules, n, path);
+        int is = independent_permission(after_rules, m, path);
+        widens |= is > was;
+        narrows |= is < was;
+        both_read |= was >= 1 && is >= 1;
+        both_write |= was == 2 && is == 2;
+        /* what the diff says of this path */
+        int said_before = -1, said_after = -1, exact_entry = 0;
+        size_t deepest = 0;
+        for (size_t e = 0; e < maelys_sandbox_policy_diff_path_count(diff); ++e) {
+          maelys_sandbox_policy_diff_path_view_t entry;
+          CHECK(maelys_sandbox_policy_diff_path_at(diff, e, &entry) ==
+                MAELYS_MIR_OK);
+          if (strcmp(entry.path, path) == 0) {
+            said_before = (int)entry.self_before;
+            said_after = (int)entry.self_after;
+            exact_entry = 1;
+            break;
+          }
+          size_t length = strlen(entry.path);
+          if (independent_above(entry.path, path) &&
+              (said_before < 0 || length >= deepest)) {
+            said_before = (int)entry.below_before;
+            said_after = (int)entry.below_after;
+            deepest = length;
+          }
+        }
+        /* An exact entry states both permissions. An entry above states
+         * them only where they differ: equal ones say "unchanged". */
+        int faithful =
+            said_before < 0 || (!exact_entry && said_before == said_after)
+                ? was == is
+                : said_before == was && said_after == is;
+        if (!faithful) {
+          fprintf(stderr,
+                  "FAIL %s: round %u: %s is %d -> %d, the diff says %d -> %d\n",
+                  __FILE__, round, path, was, is, said_before, said_after);
+          ++failures;
+        }
+      }
+    }
+    const unsigned filesystem = MAELYS_SANDBOX_POLICY_DIMENSION_FILESYSTEM;
+    CHECK(maelys_sandbox_policy_diff_widens(diff) == (widens ? filesystem : 0u));
+    CHECK(maelys_sandbox_policy_diff_narrows(diff) ==
+          (narrows ? filesystem : 0u));
+    if (!widens && !narrows)
+      CHECK(maelys_sandbox_policy_diff_path_count(diff) == 0u);
+    /* agreement with containment, both ways */
+    char *excess = NULL;
+    CHECK(maelys_plan_filesystem_excess(before_rules, n, after_rules, m,
+                                        &excess) == MAELYS_MIR_OK);
+    CHECK((excess != NULL) == widens);
+    free(excess);
+    CHECK((overlap.read_path != NULL) == both_read);
+    CHECK((overlap.write_path != NULL) == both_write);
+    CHECK(overlap.dimensions == (both_read ? filesystem : 0u));
+    if (overlap.read_path)
+      CHECK(independent_permission(before_rules, n, overlap.read_path) >= 1 &&
+            independent_permission(after_rules, m, overlap.read_path) >= 1);
+    if (overlap.write_path)
+      CHECK(independent_permission(before_rules, n, overlap.write_path) == 2 &&
+            independent_permission(after_rules, m, overlap.write_path) == 2);
+    if (widens || narrows)
+      ++different;
+    else
+      ++equivalent;
+    if (both_read)
+      ++overlapping;
+    else
+      ++disjoint;
+    maelys_sandbox_policy_overlap_clear(&overlap);
+    maelys_sandbox_policy_diff_destroy(diff);
+    if (failures)
+      return;
+  }
+  CHECK(equivalent > 500u && different > 5000u && overlapping > 2000u &&
+        disjoint > 2000u);
+  /* Different rules, same permissions: equivalent, and nothing to report. */
+  maelys_sandbox_policy_resolved_rule_t one[] = {
+      {MAELYS_MIR_FS_READ, MAELYS_MIR_SCOPE_TREE, (char *)"/a",
+       MAELYS_SANDBOX_POLICY_MISSING_ERROR}};
+  maelys_sandbox_policy_resolved_rule_t two[] = {
+      {MAELYS_MIR_FS_READ, MAELYS_MIR_SCOPE_EXACT, (char *)"/a",
+       MAELYS_SANDBOX_POLICY_MISSING_ERROR},
+      {MAELYS_MIR_FS_READ, MAELYS_MIR_SCOPE_TREE, (char *)"/a",
+       MAELYS_SANDBOX_POLICY_MISSING_ERROR},
+      {MAELYS_MIR_FS_READ, MAELYS_MIR_SCOPE_TREE, (char *)"/a/b",
+       MAELYS_SANDBOX_POLICY_MISSING_ERROR}};
+  maelys_sandbox_policy_plan_t first, second;
+  fake_plan(&first, one, 1u);
+  fake_plan(&second, two, 3u);
+  maelys_sandbox_policy_diff_t *diff = NULL;
+  CHECK(maelys_sandbox_policy_plan_diff(&first, &second, &diff, NULL) ==
+        MAELYS_MIR_OK);
+  CHECK(maelys_sandbox_policy_diff_widens(diff) == 0u &&
+        maelys_sandbox_policy_diff_narrows(diff) == 0u &&
+        maelys_sandbox_policy_diff_path_count(diff) == 0u);
+  maelys_sandbox_policy_diff_destroy(diff);
+  CHECK(maelys_sandbox_policy_plan_diff(NULL, &second, &diff, NULL) ==
+        MAELYS_MIR_ERR_ARGUMENT);
+  CHECK(maelys_sandbox_policy_plan_overlaps(&first, NULL, NULL, NULL) ==
+        MAELYS_MIR_ERR_ARGUMENT);
+}
+
 static void test_evaluate_arguments(void) {
   maelys_sandbox_policy_plan_t *plan = calloc(1, sizeof(*plan));
   maelys_sandbox_policy_evaluation_t out;
@@ -754,6 +921,7 @@ int main(int argc, char **argv) {
   test_witness_choice();
   test_containment_is_exact();
   test_containment_matches_reference();
+  test_diff_and_overlap_are_exact();
   test_evaluate_arguments();
   if (failures)
     fprintf(stderr, "%d permission test failures\n", failures);

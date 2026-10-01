@@ -1,0 +1,313 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "before",
+    "beforeDigest",
+    "after",
+    "afterDigest",
+    "scope",
+    "permissionContract",
+    "context",
+    "analysed",
+    "equivalent",
+    "widens",
+    "narrows",
+    "filesystem",
+    "network",
+    "root",
+    "process"
+  ],
+  "properties": {
+    "before": {
+      "type": "string"
+    },
+    "beforeDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "after": {
+      "type": "string"
+    },
+    "afterDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "scope": {
+      "const": "host"
+    },
+    "permissionContract": {
+      "const": 2
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimalRoots"
+      ],
+      "properties": {
+        "workspace": {
+          "type": "string"
+        },
+        "temp": {
+          "type": "string"
+        },
+        "minimalRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mediator": {
+          "type": "string"
+        }
+      }
+    },
+    "analysed": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "filesystem",
+          "network",
+          "root",
+          "process"
+        ]
+      }
+    },
+    "equivalent": {
+      "type": "boolean"
+    },
+    "widens": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "filesystem",
+          "network",
+          "root",
+          "process"
+        ]
+      }
+    },
+    "narrows": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "filesystem",
+          "network",
+          "root",
+          "process"
+        ]
+      }
+    },
+    "filesystem": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "self",
+          "below"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "self": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "before",
+              "after"
+            ],
+            "properties": {
+              "before": {
+                "enum": [
+                  "none",
+                  "read",
+                  "read-write"
+                ]
+              },
+              "after": {
+                "enum": [
+                  "none",
+                  "read",
+                  "read-write"
+                ]
+              }
+            }
+          },
+          "below": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "before",
+              "after"
+            ],
+            "properties": {
+              "before": {
+                "enum": [
+                  "none",
+                  "read",
+                  "read-write"
+                ]
+              },
+              "after": {
+                "enum": [
+                  "none",
+                  "read",
+                  "read-write"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "added",
+        "removed"
+      ],
+      "properties": {
+        "mode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "before",
+            "after"
+          ],
+          "properties": {
+            "before": {
+              "enum": [
+                "none",
+                "mediated",
+                "direct"
+              ]
+            },
+            "after": {
+              "enum": [
+                "none",
+                "mediated",
+                "direct"
+              ]
+            }
+          }
+        },
+        "added": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "protocol",
+              "host",
+              "port",
+              "requireTlsSni",
+              "allowPrivateAddresses"
+            ],
+            "properties": {
+              "protocol": {
+                "const": "tcp"
+              },
+              "host": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "requireTlsSni": {
+                "type": "boolean"
+              },
+              "allowPrivateAddresses": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "removed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "protocol",
+              "host",
+              "port",
+              "requireTlsSni",
+              "allowPrivateAddresses"
+            ],
+            "properties": {
+              "protocol": {
+                "const": "tcp"
+              },
+              "host": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "requireTlsSni": {
+                "type": "boolean"
+              },
+              "allowPrivateAddresses": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "root": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "before",
+        "after"
+      ],
+      "properties": {
+        "before": {
+          "enum": [
+            "read-only",
+            "ephemeral-write"
+          ]
+        },
+        "after": {
+          "enum": [
+            "read-only",
+            "ephemeral-write"
+          ]
+        }
+      }
+    },
+    "process": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "before",
+        "after"
+      ],
+      "properties": {
+        "before": {
+          "enum": [
+            "required",
+            "disabled"
+          ]
+        },
+        "after": {
+          "enum": [
+            "required",
+            "disabled"
+          ]
+        }
+      }
+    }
+  }
+}

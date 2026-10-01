@@ -1,5 +1,37 @@
 # C API contract
 
+## ABI numbers
+
+Each public header carries two numbers, on lines a consumer may read by
+`grep`:
+
+```c
+#define MAELYS_MIR_ABI_VERSION 4u
+#define MAELYS_MIR_ABI_COMPATIBLE_SINCE 3u
+#define MAELYS_SANDBOX_POLICY_ABI_VERSION 6u
+#define MAELYS_SANDBOX_POLICY_ABI_COMPATIBLE_SINCE 5u
+```
+
+`ABI_VERSION` is the revision of the header and rises by one with every
+change to it, additions included. `ABI_COMPATIBLE_SINCE` is the oldest
+revision whose declarations all still hold unchanged; it rises only on a
+break, to the new `ABI_VERSION`. A consumer written for revision N is served
+by an installed library when `COMPATIBLE_SINCE <= N <= VERSION`; against a
+pinned build it compares for equality.
+
+A break is a removed declaration, a changed signature, layout or semantic
+contract. An addition is not. Public enumerations are open: a consumer must
+tolerate a value it does not know, and an added enumerator comes with a
+consumer notice in the changelog.
+
+`make abi-check`, part of `make check`, holds this: the declarations of each
+floor revision are frozen under `tests/public/` and compiled against the
+current headers, and a frozen consumer switches over every public
+enumeration without a default. Headers published before 0.8.0 carry the
+first number only, and several of them share a number while declaring
+different things: a consumer facing one of those can only compare for
+equality.
+
 ## Ownership
 
 - `*_create`, `*_build`, `*_decode`, `*_compile_json`, `*_restrict`, and
@@ -59,6 +91,11 @@ using either flag fails closed without the matching capability.
 grants nothing another does not, and names a witness per dimension when it
 does. Its answer is about the two plans as resolved; see the conditions in
 the [permission contract](permission-contract.md#containment).
+`maelys_sandbox_policy_plan_diff()` and
+`maelys_sandbox_policy_plan_overlaps()` read the same regions for what
+changes between two plans and for what both grant. A diff is an owned
+object, released with `maelys_sandbox_policy_diff_destroy()`; its path views
+borrow from it.
 
 The permissions of a plan are defined by the
 [permission contract](permission-contract.md), not by the order of its rules.

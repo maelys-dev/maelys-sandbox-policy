@@ -64,10 +64,12 @@ build/bin/maelys-policy capabilities policy.mir --check --available fs-read   # 
 build/bin/maelys-policy resolve policy.mir --workspace "$PWD" --minimal-root /usr   # rules on this host
 build/bin/maelys-policy evaluate policy.mir --workspace "$PWD" --minimal-root /usr --path "$PWD/src/main.c"
 build/bin/maelys-policy contains parent.mir child.mir --workspace "$PWD" --minimal-root /usr   # exit 2 with a witness
+build/bin/maelys-policy diff before.mir after.mir --workspace "$PWD" --minimal-root /usr --check   # exit 2 unless equivalent
+build/bin/maelys-policy overlaps first.mir second.mir --workspace "$PWD" --minimal-root /usr
 build/bin/maelys-policy describe --summary --format json --compact
 ```
 
-`resolve`, `evaluate` and `contains` answer for one host: the directories given for the
+`resolve`, `evaluate`, `contains`, `diff` and `overlaps` answer for one host: the directories given for the
 symbolic roots, as they are when the command runs. Their output is a
 diagnostic of that resolution, never a policy identity, and it proves
 nothing about what a backend installed. `evaluate` takes `--path` as written,

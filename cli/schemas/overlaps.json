@@ -1,0 +1,161 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "first",
+    "firstDigest",
+    "second",
+    "secondDigest",
+    "scope",
+    "permissionContract",
+    "context",
+    "analysed",
+    "overlaps",
+    "filesystem",
+    "network"
+  ],
+  "properties": {
+    "first": {
+      "type": "string"
+    },
+    "firstDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "second": {
+      "type": "string"
+    },
+    "secondDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "scope": {
+      "const": "host"
+    },
+    "permissionContract": {
+      "const": 2
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimalRoots"
+      ],
+      "properties": {
+        "workspace": {
+          "type": "string"
+        },
+        "temp": {
+          "type": "string"
+        },
+        "minimalRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mediator": {
+          "type": "string"
+        }
+      }
+    },
+    "analysed": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "filesystem",
+          "network",
+          "root",
+          "process"
+        ]
+      }
+    },
+    "overlaps": {
+      "type": "boolean"
+    },
+    "filesystem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "readablePath": {
+          "type": "string"
+        },
+        "writablePath": {
+          "type": "string"
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "overlaps"
+      ],
+      "properties": {
+        "overlaps": {
+          "type": "boolean"
+        },
+        "firstDestination": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "protocol",
+            "host",
+            "port",
+            "requireTlsSni",
+            "allowPrivateAddresses"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "tcp"
+            },
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "requireTlsSni": {
+              "type": "boolean"
+            },
+            "allowPrivateAddresses": {
+              "type": "boolean"
+            }
+          }
+        },
+        "secondDestination": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "protocol",
+            "host",
+            "port",
+            "requireTlsSni",
+            "allowPrivateAddresses"
+          ],
+          "properties": {
+            "protocol": {
+              "const": "tcp"
+            },
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "requireTlsSni": {
+              "type": "boolean"
+            },
+            "allowPrivateAddresses": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  }
+}
