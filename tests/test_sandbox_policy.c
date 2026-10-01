@@ -769,6 +769,117 @@ static void test_containment(void) {
   CHECK(rmdir(src) == 0 && rmdir(root) == 0);
 }
 
+static void test_deny_write(void) {
+  char root[] = "/tmp/maelys-sandbox-policy-denywrite-XXXXXX";
+  CHECK(make_temp_dir(root));
+  char git[512];
+  CHECK(snprintf(git, sizeof(git), "%s/.git", root) > 0);
+  CHECK(mkdir(git, 0700) == 0);
+  char *resolved_root = realpath(root, NULL);
+  maelys_sandbox_policy_host_t *h = NULL;
+  char *e = NULL;
+  CHECK_OK(maelys_sandbox_policy_host_create(&h, &e));
+  CHECK_OK(maelys_sandbox_policy_host_set_workspace(h, root, &e));
+  const maelys_sandbox_policy_capabilities_t deny_write =
+      MAELYS_SANDBOX_POLICY_CAP_FS_DENY_WRITE;
+
+  /* write the workspace, keep .git read-only */
+  maelys_mir_t *m = two_rules(MAELYS_MIR_FS_WRITE, MAELYS_MIR_ROOT_WORKSPACE, "",
+                              MAELYS_MIR_FS_DENY_WRITE,
+                              MAELYS_MIR_ROOT_WORKSPACE, ".git");
+  CHECK(maelys_sandbox_policy_required_capabilities(m) & deny_write);
+  maelys_sandbox_policy_plan_t *p = NULL;
+  /* A backend that does not announce the capability gets no plan. */
+  CHECK(maelys_sandbox_policy_compile(m, h, all_caps, &p, &e) ==
+        MAELYS_MIR_ERR_UNSUPPORTED);
+  CHECK(p == NULL && e && strstr(e, "fs-deny-write") != NULL);
+  maelys_mir_error_free(e);
+  e = NULL;
+  CHECK_OK(maelys_sandbox_policy_compile(m, h, all_caps | deny_write, &p, &e));
+  /* plan order: the grant, then the deny-write */
+  maelys_sandbox_policy_resolved_rule_view_t rule;
+  CHECK_OK(maelys_sandbox_policy_plan_rule_at(p, 0, &rule));
+  CHECK(rule.access == MAELYS_MIR_FS_WRITE);
+  CHECK_OK(maelys_sandbox_policy_plan_rule_at(p, 1, &rule));
+  CHECK(rule.access == MAELYS_MIR_FS_DENY_WRITE &&
+        rule.missing == MAELYS_SANDBOX_POLICY_MISSING_ERROR);
+  char path[600];
+  maelys_sandbox_policy_evaluation_t evaluation;
+  CHECK(snprintf(path, sizeof(path), "%s/.git/config", resolved_root) > 0);
+  CHECK_OK(maelys_sandbox_policy_plan_evaluate(p, path, &evaluation, &e));
+  CHECK(evaluation.permission == MAELYS_SANDBOX_POLICY_PERMISSION_READ &&
+        evaluation.reason == MAELYS_SANDBOX_POLICY_REASON_DENY_WRITE_RULE &&
+        evaluation.decisive_rule == 1u);
+  CHECK(snprintf(path, sizeof(path), "%s/src/main.c", resolved_root) > 0);
+  CHECK_OK(maelys_sandbox_policy_plan_evaluate(p, path, &evaluation, &e));
+  CHECK(evaluation.permission == MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE);
+
+  /* It is contained in the plan that writes everything, not the converse. */
+  maelys_mir_t *wide = one_rule(MAELYS_MIR_FS_WRITE, MAELYS_MIR_ROOT_WORKSPACE,
+                                "", MAELYS_MIR_MISSING_ERROR);
+  maelys_sandbox_policy_plan_t *wide_plan = NULL;
+  CHECK_OK(maelys_sandbox_policy_compile(wide, h, all_caps, &wide_plan, &e));
+  maelys_sandbox_policy_containment_t c;
+  const unsigned filesystem = MAELYS_SANDBOX_POLICY_DIMENSION_FILESYSTEM;
+  CHECK((exceeds(wide_plan, p, &c) & filesystem) == 0u);
+  maelys_sandbox_policy_containment_clear(&c);
+  CHECK(exceeds(p, wide_plan, &c) & filesystem);
+  CHECK(c.boundary_permission == MAELYS_SANDBOX_POLICY_PERMISSION_READ &&
+        c.candidate_permission == MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE);
+  maelys_sandbox_policy_containment_clear(&c);
+  maelys_sandbox_policy_plan_destroy(wide_plan);
+  maelys_mir_destroy(wide);
+  maelys_sandbox_policy_plan_destroy(p);
+  maelys_mir_destroy(m);
+
+  /* A read under a write stays ambiguous beside a deny-write: refused. */
+  maelys_mir_builder_t *b = NULL;
+  CHECK_OK(maelys_mir_builder_create(&b, &e));
+  CHECK_OK(maelys_mir_builder_add_fs_rule(
+      b, MAELYS_MIR_FS_WRITE, MAELYS_MIR_ROOT_WORKSPACE, "",
+      MAELYS_MIR_SCOPE_TREE, MAELYS_MIR_MISSING_ERROR, &e));
+  CHECK_OK(maelys_mir_builder_add_fs_rule(
+      b, MAELYS_MIR_FS_READ, MAELYS_MIR_ROOT_WORKSPACE, ".git",
+      MAELYS_MIR_SCOPE_TREE, MAELYS_MIR_MISSING_ERROR, &e));
+  CHECK_OK(maelys_mir_builder_add_fs_rule(
+      b, MAELYS_MIR_FS_DENY_WRITE, MAELYS_MIR_ROOT_WORKSPACE, ".git",
+      MAELYS_MIR_SCOPE_TREE, MAELYS_MIR_MISSING_ERROR, &e));
+  CHECK_OK(maelys_mir_builder_build(b, &m, &e));
+  p = NULL;
+  CHECK(maelys_sandbox_policy_compile(m, h, all_caps | deny_write, &p, &e) ==
+        MAELYS_MIR_ERR_CONFLICT);
+  CHECK(p == NULL);
+  maelys_mir_error_free(e);
+  e = NULL;
+  maelys_mir_destroy(m);
+  maelys_mir_builder_destroy(b);
+
+  /* An absent target is kept and needs the protection of its creation. */
+  m = one_rule(MAELYS_MIR_FS_DENY_WRITE, MAELYS_MIR_ROOT_WORKSPACE, ".env",
+               MAELYS_MIR_MISSING_SKIP);
+  p = NULL;
+  CHECK(maelys_sandbox_policy_compile(m, h, all_caps | deny_write, &p, &e) ==
+        MAELYS_MIR_ERR_UNSUPPORTED);
+  CHECK(p == NULL && e && strstr(e, "fs-protect-create") != NULL);
+  maelys_mir_error_free(e);
+  e = NULL;
+  CHECK_OK(maelys_sandbox_policy_compile(
+      m, h, all_caps | deny_write | MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE,
+      &p, &e));
+  CHECK_OK(maelys_sandbox_policy_plan_rule_at(p, 0, &rule));
+  CHECK(rule.access == MAELYS_MIR_FS_DENY_WRITE &&
+        rule.missing == MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE);
+  maelys_sandbox_policy_plan_destroy(p);
+  maelys_mir_destroy(m);
+  CHECK(strcmp(maelys_sandbox_policy_capability_name(deny_write),
+               "fs-deny-write") == 0);
+
+  maelys_sandbox_policy_host_destroy(h);
+  free(resolved_root);
+  maelys_mir_error_free(e);
+  CHECK(rmdir(git) == 0 && rmdir(root) == 0);
+}
+
 int main(void) {
   test_compile();
   test_symlink_escape();
@@ -779,6 +890,7 @@ int main(void) {
   test_absent_deny();
   test_example_without_git();
   test_containment();
+  test_deny_write();
   if (failures)
     fprintf(stderr, "%d sandbox test failures\n", failures);
   return failures ? 1 : 0;

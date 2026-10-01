@@ -442,6 +442,8 @@ static int parse_rule(json_parser_t *p, maelys_mir_builder_t *b) {
   maelys_mir_fs_access_t a = equals(access, "read")    ? MAELYS_MIR_FS_READ
                              : equals(access, "write") ? MAELYS_MIR_FS_WRITE
                              : equals(access, "deny")  ? MAELYS_MIR_FS_DENY
+                             : equals(access, "deny-write")
+                                 ? MAELYS_MIR_FS_DENY_WRITE
                                                        : 0;
   maelys_mir_path_scope_t s = !scope || equals(scope, "tree")
                                   ? MAELYS_MIR_SCOPE_TREE

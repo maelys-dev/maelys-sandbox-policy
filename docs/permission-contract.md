@@ -16,13 +16,16 @@ to it:
 | Applicable rules | Permission |
 |---|---|
 | at least one `deny` | none |
-| no `deny`, at least one `write` | read and write |
-| only `read` | read |
-| none | none |
+| no `deny`, a `write` and no `deny-write` | read and write |
+| no `deny`, a `read`, or a `write` with a `deny-write` | read |
+| no `read` nor `write` | none |
 
 - An `exact` rule applies to its own path. A `tree` rule applies to its
   path and to every path under it; `/a` is not an ancestor of `/ab`.
 - **A deny is absolute.** No grant reopens a denied path, however precise.
+- **A deny-write removes writing and grants nothing.** It is absolute too:
+  no write grant, however precise, reopens writing beneath it. What it
+  leaves is the reading that a `read` or a `write` rule grants.
 - **Grants are additive.** `write` implies `read`, and a `read` rule is a
   grant of reading, never a restriction of writing.
 - **Access is denied by default.** A path no rule applies to is not
@@ -52,9 +55,26 @@ persistence of that path: a `write` on the workspace is a durable write to
 the workspace under both root modes. A backend that cannot provide this
 combination refuses the plan.
 
+### What removing writing means
+
+A `deny-write` rule, and a `deny` rule, protect a path that usually lies in
+a tree the execution may write. The contract therefore says what "write"
+covers, so that no backend reads it more narrowly:
+
+- the content of the path, and under a `tree` rule the creation and removal
+  of every entry beneath it;
+- its metadata: mode, times, extended attributes;
+- the path itself: it is neither removed, renamed, nor replaced by renaming
+  something over it. These are writes to its parent, which may be writable;
+  without this, the rule is undone by replacing its target;
+- what the rule protected stays protected when an ancestor is renamed.
+
+A backend that announces `fs-deny-write` guarantees all of it, or refuses
+the plan before launch.
+
 ## Plan order
 
-A plan lists every grant, then every deny; inside each group, shorter paths
+A plan lists every grant, then every deny-write, then every deny; inside each group, shorter paths
 first, then byte order, `tree` before `exact`, `read` before `write`. A
 backend that applies rules in order and lets the last match win enforces
 the deny rule of the contract, and additive grants need no order.
@@ -94,11 +114,15 @@ barrier is not lifted by a library upgrade.
 
 ## Known limits
 
-- **A read-only subtree of a writable tree is not expressible.** A `read`
-  rule does not remove an inherited `write`, and a `deny` removes reading
-  too. A future `deny-write` access would remove writing only, without
-  granting reading. Until then such policies are refused by the migration
-  check rather than widened.
+- **A `read` rule under a `write` rule is still refused.** It does not
+  remove the inherited write, and contract 1 read it as if it did. A
+  read-only subtree of a writable tree is written with `deny-write`; the
+  migration check judges the grants and denies by themselves, so the `read`
+  rule has to go even beside a `deny-write`.
+- **A hard link made before the launch** to a protected file, from
+  elsewhere in a writable tree, still lets that file be written through the
+  other name. Neither `deny` nor `deny-write` covers it, unless a backend
+  checks link counts and says so.
 - **An exception inside a denied tree is not expressible**, by design.
 - The evaluator answers for the rules of a plan. It does not read the
   filesystem and says nothing about changes between resolution and launch.
@@ -113,7 +137,10 @@ a grant. It is now **kept**:
 |---|---|
 | absent path, `missing: error` | compilation fails with `MAELYS_MIR_ERR_MISSING` |
 | absent grant, `missing: skip` | rule omitted: it grants nothing |
-| absent deny, `missing: skip` | rule kept with `missing = protect-create` |
+| absent deny or deny-write, `missing: skip` | rule kept with `missing = protect-create` |
+
+The same holds for a `deny-write`: creating the path is a write, so an
+absent target is kept and protected alike.
 
 A kept rule carries `MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE` and its
 plan requires the capability `fs-protect-create`

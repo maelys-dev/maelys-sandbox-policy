@@ -1,0 +1,14 @@
+# A deny still removes everything, inside a read-only subtree as elsewhere.
+rule write tree /w
+rule deny-write tree /w/a
+rule deny tree /w/a/secret
+node directory /w
+node directory /w/a
+node directory /w/a/secret
+node file /w/a/secret/key
+node file /w/a/notes
+query /w/a/secret/key none deny-rule
+query /w/a/notes read deny-write-rule
+query /w read-write write-rule
+requires fs-deny-write
+compile accepted

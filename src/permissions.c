@@ -49,12 +49,16 @@ void maelys_plan_evaluate(const maelys_sandbox_policy_resolved_rule_t *rules,
                           size_t count, const char *path,
                           maelys_sandbox_policy_evaluation_t *out) {
   size_t deny = SIZE_MAX, write = SIZE_MAX, read = SIZE_MAX, applicable = 0u;
+  size_t deny_write = SIZE_MAX;
   for (size_t i = 0; i < count; ++i) {
     if (!maelys_plan_rule_applies(&rules[i], path))
       continue;
     ++applicable;
     if (rules[i].access == MAELYS_MIR_FS_DENY && deny == SIZE_MAX)
       deny = i;
+    else if (rules[i].access == MAELYS_MIR_FS_DENY_WRITE &&
+             deny_write == SIZE_MAX)
+      deny_write = i;
     else if (rules[i].access == MAELYS_MIR_FS_WRITE && write == SIZE_MAX)
       write = i;
     else if (rules[i].access == MAELYS_MIR_FS_READ && read == SIZE_MAX)
@@ -65,6 +69,11 @@ void maelys_plan_evaluate(const maelys_sandbox_policy_resolved_rule_t *rules,
     out->permission = MAELYS_SANDBOX_POLICY_PERMISSION_NONE;
     out->reason = MAELYS_SANDBOX_POLICY_REASON_DENY_RULE;
     out->decisive_rule = deny;
+  } else if (write != SIZE_MAX && deny_write != SIZE_MAX) {
+    /* A write grant gives reading; the deny-write takes its writing away. */
+    out->permission = MAELYS_SANDBOX_POLICY_PERMISSION_READ;
+    out->reason = MAELYS_SANDBOX_POLICY_REASON_DENY_WRITE_RULE;
+    out->decisive_rule = deny_write;
   } else if (write != SIZE_MAX) {
     out->permission = MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE;
     out->reason = MAELYS_SANDBOX_POLICY_REASON_WRITE_RULE;
@@ -109,6 +118,7 @@ permission_of(maelys_mir_fs_access_t access) {
   case MAELYS_MIR_FS_WRITE:
     return MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE;
   case MAELYS_MIR_FS_DENY:
+  case MAELYS_MIR_FS_DENY_WRITE:
     break;
   }
   return MAELYS_SANDBOX_POLICY_PERMISSION_NONE;
@@ -295,9 +305,11 @@ typedef struct tree_state {
 maelys_sandbox_policy_permission_t maelys_contract_permission(unsigned accesses) {
   if (accesses & MAELYS_ACCESS_BIT(MAELYS_MIR_FS_DENY))
     return MAELYS_SANDBOX_POLICY_PERMISSION_NONE;
-  if (accesses & MAELYS_ACCESS_BIT(MAELYS_MIR_FS_WRITE))
+  if ((accesses & MAELYS_ACCESS_BIT(MAELYS_MIR_FS_WRITE)) &&
+      !(accesses & MAELYS_ACCESS_BIT(MAELYS_MIR_FS_DENY_WRITE)))
     return MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE;
-  if (accesses & MAELYS_ACCESS_BIT(MAELYS_MIR_FS_READ))
+  if (accesses & (MAELYS_ACCESS_BIT(MAELYS_MIR_FS_WRITE) |
+                  MAELYS_ACCESS_BIT(MAELYS_MIR_FS_READ)))
     return MAELYS_SANDBOX_POLICY_PERMISSION_READ;
   return MAELYS_SANDBOX_POLICY_PERMISSION_NONE;
 }
@@ -403,10 +415,15 @@ maelys_plan_find_conflict(const maelys_sandbox_policy_resolved_rule_t *rules,
  * grants need no order at all. */
 static int plan_rule_compare(const void *left, const void *right) {
   const maelys_sandbox_policy_resolved_rule_t *a = left, *b = right;
-  int a_deny = a->access == MAELYS_MIR_FS_DENY;
-  int b_deny = b->access == MAELYS_MIR_FS_DENY;
-  if (a_deny != b_deny)
-    return a_deny ? 1 : -1;
+  /* grants, then deny-writes, then denies */
+  int a_rank = a->access == MAELYS_MIR_FS_DENY         ? 2
+               : a->access == MAELYS_MIR_FS_DENY_WRITE ? 1
+                                                       : 0;
+  int b_rank = b->access == MAELYS_MIR_FS_DENY         ? 2
+               : b->access == MAELYS_MIR_FS_DENY_WRITE ? 1
+                                                       : 0;
+  if (a_rank != b_rank)
+    return a_rank < b_rank ? -1 : 1;
   return legacy_rule_compare(a, b);
 }
 
@@ -434,14 +451,17 @@ maelys_sandbox_policy_reason_name(maelys_sandbox_policy_reason_t value) {
     return "write-rule";
   case MAELYS_SANDBOX_POLICY_REASON_READ_RULE:
     return "read-rule";
+  case MAELYS_SANDBOX_POLICY_REASON_DENY_WRITE_RULE:
+    return "deny-write-rule";
   }
   return "unknown";
 }
 
 static const char *access_name(maelys_mir_fs_access_t access) {
-  return access == MAELYS_MIR_FS_READ    ? "read"
-         : access == MAELYS_MIR_FS_WRITE ? "write"
-                                         : "deny";
+  return access == MAELYS_MIR_FS_READ         ? "read"
+         : access == MAELYS_MIR_FS_WRITE      ? "write"
+         : access == MAELYS_MIR_FS_DENY_WRITE ? "deny-write"
+                                              : "deny";
 }
 
 static void describe_rule(const maelys_sandbox_policy_resolved_rule_t *rules,
@@ -457,14 +477,26 @@ static void describe_rule(const maelys_sandbox_policy_resolved_rule_t *rules,
 maelys_mir_result_t
 maelys_sandbox_policy_plan_finalize(maelys_sandbox_policy_plan_t *plan,
                                     char **err) {
+  /* The migration check judges the rules contract 1 could express. A
+   * deny-write did not exist then and has one reading only, so it is left
+   * out: the grants and denies around it must agree by themselves. */
+  maelys_sandbox_policy_resolved_rule_t *earlier = NULL;
+  size_t earlier_count = 0;
+  if (plan->rule_count) {
+    earlier = malloc(plan->rule_count * sizeof(*earlier));
+    if (!earlier)
+      return MAELYS_MIR_ERR_MEMORY;
+    for (size_t i = 0; i < plan->rule_count; ++i)
+      if (plan->rules[i].access != MAELYS_MIR_FS_DENY_WRITE)
+        earlier[earlier_count++] = plan->rules[i];
+  }
   maelys_plan_conflict_t conflict;
   maelys_mir_result_t result =
-      maelys_plan_find_conflict(plan->rules, plan->rule_count, &conflict);
+      maelys_plan_find_conflict(earlier, earlier_count, &conflict);
   if (result == MAELYS_MIR_ERR_CONFLICT) {
     char legacy[4200], contract[4200];
-    describe_rule(plan->rules, conflict.legacy_rule, legacy, sizeof(legacy));
-    describe_rule(plan->rules, conflict.contract_rule, contract,
-                  sizeof(contract));
+    describe_rule(earlier, conflict.legacy_rule, legacy, sizeof(legacy));
+    describe_rule(earlier, conflict.contract_rule, contract, sizeof(contract));
     maelys_set_error(
         err,
         "permission precedence conflict at %s: before=%s after=%s; "
@@ -474,6 +506,7 @@ maelys_sandbox_policy_plan_finalize(maelys_sandbox_policy_plan_t *plan,
         maelys_sandbox_policy_permission_name(conflict.after), legacy, contract);
   }
   free(conflict.witness);
+  free(earlier);
   if (result != MAELYS_MIR_OK)
     return result;
   if (plan->rule_count > 1u)

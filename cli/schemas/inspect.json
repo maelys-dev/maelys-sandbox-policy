@@ -1,38 +1,98 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["inspectionVersion", "mirFormatVersion", "identity", "filesystem", "network", "root", "process"],
+  "required": [
+    "inspectionVersion",
+    "mirFormatVersion",
+    "identity",
+    "filesystem",
+    "network",
+    "root",
+    "process"
+  ],
   "properties": {
-    "inspectionVersion": {"const": 1},
-    "mirFormatVersion": {"const": 3},
+    "inspectionVersion": {
+      "const": 1
+    },
+    "mirFormatVersion": {
+      "const": 3
+    },
     "identity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["algorithm", "basis", "decisionDigest"],
+      "required": [
+        "algorithm",
+        "basis",
+        "decisionDigest"
+      ],
       "properties": {
-        "algorithm": {"const": "sha256"},
-        "basis": {"const": "canonical-mir-v3-bytes"},
-        "decisionDigest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        "algorithm": {
+          "const": "sha256"
+        },
+        "basis": {
+          "const": "canonical-mir-v3-bytes"
+        },
+        "decisionDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
       }
     },
     "filesystem": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["default", "rules"],
+      "required": [
+        "default",
+        "rules"
+      ],
       "properties": {
-        "default": {"const": "deny"},
+        "default": {
+          "const": "deny"
+        },
         "rules": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["access", "root", "path", "scope", "missing"],
+            "required": [
+              "access",
+              "root",
+              "path",
+              "scope",
+              "missing"
+            ],
             "properties": {
-              "access": {"enum": ["read", "write", "deny"]},
-              "root": {"enum": ["minimal-runtime", "workspace", "temp", "host"]},
-              "path": {"type": "string"},
-              "scope": {"enum": ["exact", "tree"]},
-              "missing": {"enum": ["error", "skip"]}
+              "access": {
+                "enum": [
+                  "read",
+                  "write",
+                  "deny",
+                  "deny-write"
+                ]
+              },
+              "root": {
+                "enum": [
+                  "minimal-runtime",
+                  "workspace",
+                  "temp",
+                  "host"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "scope": {
+                "enum": [
+                  "exact",
+                  "tree"
+                ]
+              },
+              "missing": {
+                "enum": [
+                  "error",
+                  "skip"
+                ]
+              }
             }
           }
         }
@@ -41,21 +101,45 @@
     "network": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode"],
+      "required": [
+        "mode"
+      ],
       "properties": {
-        "mode": {"enum": ["none", "direct", "mediated"]},
+        "mode": {
+          "enum": [
+            "none",
+            "direct",
+            "mediated"
+          ]
+        },
         "allow": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["protocol", "host", "port"],
+            "required": [
+              "protocol",
+              "host",
+              "port"
+            ],
             "properties": {
-              "protocol": {"const": "tcp"},
-              "host": {"type": "string"},
-              "port": {"type": "integer", "minimum": 1, "maximum": 65535},
-              "requireTlsSni": {"const": true},
-              "allowPrivateAddresses": {"const": true}
+              "protocol": {
+                "const": "tcp"
+              },
+              "host": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "requireTlsSni": {
+                "const": true
+              },
+              "allowPrivateAddresses": {
+                "const": true
+              }
             }
           }
         }
@@ -64,14 +148,32 @@
     "root": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode"],
-      "properties": {"mode": {"enum": ["read-only", "ephemeral-write"]}}
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "read-only",
+            "ephemeral-write"
+          ]
+        }
+      }
     },
     "process": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["treeConfinement"],
-      "properties": {"treeConfinement": {"enum": ["required", "disabled"]}}
+      "required": [
+        "treeConfinement"
+      ],
+      "properties": {
+        "treeConfinement": {
+          "enum": [
+            "required",
+            "disabled"
+          ]
+        }
+      }
     }
   }
 }

@@ -259,7 +259,7 @@ static const char *const capability_choices[] = {
     "fs-read",          "fs-write",           "fs-deny",
     "network-none",     "network-direct",     "network-mediated",
     "process-tree",     "root-ephemeral-write", "network-require-tls-sni",
-    "network-private-addresses", "fs-protect-create", NULL};
+    "network-private-addresses", "fs-protect-create", "fs-deny-write", NULL};
 
 #define CAPABILITY_CHECK_OPTIONS                                                \
   {MAELYS_CLI_FLAG("check",                                                     \
@@ -353,13 +353,15 @@ static int command_capabilities(maelys_cli_context_t *context) {
   }
   maelys_sandbox_policy_capabilities_t required =
       maelys_sandbox_policy_required_capabilities(mir);
-  /* What only resolution on a host can settle. A deny with missing:skip
-   * needs fs-protect-create exactly where its target is absent. */
+  /* What only resolution on a host can settle. A deny or deny-write with
+   * missing:skip needs fs-protect-create exactly where its target is
+   * absent. */
   maelys_sandbox_policy_capabilities_t resolution = 0;
   for (size_t i = 0u; i < maelys_mir_fs_rule_count(mir); ++i) {
     maelys_mir_fs_rule_view_t rule;
     if (maelys_mir_fs_rule_at(mir, i, &rule) == MAELYS_MIR_OK &&
-        rule.access == MAELYS_MIR_FS_DENY &&
+        (rule.access == MAELYS_MIR_FS_DENY ||
+         rule.access == MAELYS_MIR_FS_DENY_WRITE) &&
         rule.missing == MAELYS_MIR_MISSING_SKIP)
       resolution |= MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE;
   }
@@ -478,9 +480,10 @@ static void write_context(maelys_cli_json_writer_t *data,
 }
 
 static const char *fs_access_name(maelys_mir_fs_access_t access) {
-  return access == MAELYS_MIR_FS_READ    ? "read"
-         : access == MAELYS_MIR_FS_WRITE ? "write"
-                                         : "deny";
+  return access == MAELYS_MIR_FS_READ         ? "read"
+         : access == MAELYS_MIR_FS_WRITE      ? "write"
+         : access == MAELYS_MIR_FS_DENY_WRITE ? "deny-write"
+                                              : "deny";
 }
 
 static const char *fs_scope_name(maelys_mir_path_scope_t scope) {

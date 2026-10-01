@@ -1,0 +1,12 @@
+# Creating a path is a write: a deny-write on a target absent at resolution
+# is kept and asks the backend to protect its creation too.
+rule write tree /w
+rule deny-write exact /w/.env protect-create
+node directory /w
+node absent /w/.env
+node file /w/main.c
+query /w/.env read deny-write-rule
+query /w/main.c read-write write-rule
+requires fs-deny-write
+requires fs-protect-create
+compile accepted

@@ -1,0 +1,24 @@
+{
+  "formatVersion": 3,
+  "filesystem": {
+    "default": "deny",
+    "rules": [
+      { "access": "deny-write", "path": { "root": "workspace", "relative": ".git" }, "missing": "skip" },
+      { "access": "write", "path": { "root": "workspace", "relative": "" } },
+      { "access": "deny-write", "path": { "root": "workspace", "relative": "" }, "scope": "exact" },
+      { "access": "read", "path": { "root": "workspace", "relative": "" }, "scope": "exact" },
+      { "access": "write", "path": { "root": "workspace", "relative": "" }, "scope": "exact" },
+      { "access": "deny", "path": { "root": "workspace", "relative": "secrets" }, "missing": "skip" },
+      { "access": "deny-write", "path": { "root": "workspace", "relative": "secrets" }, "missing": "skip" }
+    ]
+  },
+  "network": {
+    "mode": "none"
+  },
+  "root": {
+    "mode": "read-only"
+  },
+  "process": {
+    "treeConfinement": "required"
+  }
+}

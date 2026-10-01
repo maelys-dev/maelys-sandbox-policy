@@ -110,7 +110,8 @@
                     "enum": [
                       "read",
                       "write",
-                      "deny"
+                      "deny",
+                      "deny-write"
                     ]
                   },
                   "scope": {
@@ -144,7 +145,8 @@
                     "enum": [
                       "read",
                       "write",
-                      "deny"
+                      "deny",
+                      "deny-write"
                     ]
                   },
                   "scope": {

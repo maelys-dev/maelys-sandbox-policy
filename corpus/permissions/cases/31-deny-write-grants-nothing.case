@@ -1,0 +1,8 @@
+# A deny-write is not a grant: alone, it leaves the default deny.
+rule deny-write tree /workspace/vendor
+node directory /workspace/vendor
+node file /workspace/vendor/lib.c
+query /workspace/vendor none default-deny
+query /workspace/vendor/lib.c none default-deny
+requires fs-deny-write
+compile accepted

@@ -13,7 +13,7 @@ typedef struct maelys_sandbox_policy_plan maelys_sandbox_policy_plan_t;
 /* The revision of this header, raised by every change to it, and the oldest
  * revision whose declarations all still hold unchanged. A consumer written
  * for revision N is served when COMPATIBLE_SINCE <= N <= VERSION. */
-#define MAELYS_SANDBOX_POLICY_ABI_VERSION 6u
+#define MAELYS_SANDBOX_POLICY_ABI_VERSION 7u
 #define MAELYS_SANDBOX_POLICY_ABI_COMPATIBLE_SINCE 5u
 /* The permission contract a SandboxPlan carries. Contract 2: a deny wins
  * over every overlapping grant, grants are additive, and a policy whose
@@ -37,12 +37,16 @@ enum {
   /* The backend keeps a denied path that does not exist yet from being
    * created, linked or renamed into place. Required by resolution, when a
    * deny names an absent target: it cannot be read from the MIR alone. */
-  MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE = UINT64_C(1) << 10
+  MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE = UINT64_C(1) << 10,
+  /* The backend removes writing from a path while it keeps reading: no
+   * change to its content, entries or metadata, and the path itself is
+   * neither removed, renamed nor replaced. Required by a deny-write rule. */
+  MAELYS_SANDBOX_POLICY_CAP_FS_DENY_WRITE = UINT64_C(1) << 11
 };
 
 /* What a backend must do about a resolved rule whose path is absent at
  * launch. ERROR: the path existed at resolution and the launch fails
- * without it. PROTECT_CREATE: a deny whose target did not exist at
+ * without it. PROTECT_CREATE: a deny or deny-write whose target did not exist at
  * resolution; the path is the canonical existing prefix followed by the
  * literal remaining components. That names the path and guarantees nothing:
  * protecting it against creation, links and renames is the backend's, which
@@ -69,7 +73,9 @@ typedef enum maelys_sandbox_policy_reason {
   MAELYS_SANDBOX_POLICY_REASON_DEFAULT_DENY = 1,
   MAELYS_SANDBOX_POLICY_REASON_DENY_RULE = 2,
   MAELYS_SANDBOX_POLICY_REASON_WRITE_RULE = 3,
-  MAELYS_SANDBOX_POLICY_REASON_READ_RULE = 4
+  MAELYS_SANDBOX_POLICY_REASON_READ_RULE = 4,
+  /* read, because a deny-write rule removes what a write grant gave */
+  MAELYS_SANDBOX_POLICY_REASON_DENY_WRITE_RULE = 5
 } maelys_sandbox_policy_reason_t;
 
 typedef struct maelys_sandbox_policy_evaluation {
@@ -131,8 +137,9 @@ maelys_sandbox_policy_plan_rule_at(const maelys_sandbox_policy_plan_t *plan, siz
  * Reference evaluator of the filesystem permission contract: what the plan
  * grants on one resolved absolute path. It reads the rules only, never the
  * filesystem, and its answer does not depend on their order: any applicable
- * deny gives no access; otherwise any applicable write gives read and write;
- * otherwise an applicable read gives read; otherwise nothing. The root mode
+ * deny gives no access; otherwise an applicable read or write gives read,
+ * and an applicable write gives write too unless a deny-write applies;
+ * otherwise nothing. The root mode
  * grants nothing. A backend conforms when it enforces exactly this, or
  * refuses the plan before launch.
  */

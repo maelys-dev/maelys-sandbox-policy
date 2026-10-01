@@ -1,5 +1,5 @@
 /*
- * A consumer as it compiled against the headers of Sandbox Policy 0.8.0,
+ * A consumer as it compiled against the headers of Sandbox Policy 0.9.0,
  * frozen.
  *
  * Each switch below names every enumerator a public enumeration had at that
@@ -50,6 +50,7 @@ int frozen_fs_access(maelys_mir_fs_access_t value) {
   case MAELYS_MIR_FS_READ: return 1;
   case MAELYS_MIR_FS_WRITE: return 2;
   case MAELYS_MIR_FS_DENY: return 3;
+  case MAELYS_MIR_FS_DENY_WRITE: return 4;
   }
   return -1;
 }
@@ -127,6 +128,7 @@ int frozen_reason(maelys_sandbox_policy_reason_t value) {
   case MAELYS_SANDBOX_POLICY_REASON_DENY_RULE: return 2;
   case MAELYS_SANDBOX_POLICY_REASON_WRITE_RULE: return 3;
   case MAELYS_SANDBOX_POLICY_REASON_READ_RULE: return 4;
+  case MAELYS_SANDBOX_POLICY_REASON_DENY_WRITE_RULE: return 5;
   }
   return -1;
 }

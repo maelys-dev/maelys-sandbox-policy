@@ -1,0 +1,10 @@
+# The same on one file.
+rule write tree /workspace
+rule deny-write exact /workspace/Makefile
+node directory /workspace
+node file /workspace/Makefile
+node file /workspace/main.c
+query /workspace/Makefile read deny-write-rule
+query /workspace/main.c read-write write-rule
+requires fs-deny-write
+compile accepted

@@ -6,9 +6,9 @@ Each public header carries two numbers, on lines a consumer may read by
 `grep`:
 
 ```c
-#define MAELYS_MIR_ABI_VERSION 4u
+#define MAELYS_MIR_ABI_VERSION 5u
 #define MAELYS_MIR_ABI_COMPATIBLE_SINCE 3u
-#define MAELYS_SANDBOX_POLICY_ABI_VERSION 6u
+#define MAELYS_SANDBOX_POLICY_ABI_VERSION 7u
 #define MAELYS_SANDBOX_POLICY_ABI_COMPATIBLE_SINCE 5u
 ```
 
@@ -71,7 +71,8 @@ trusted host supplies a bounded mediator identifier; compilation fails closed
 when mediated networking is requested without one.
 
 `maelys_mir_restrict` accepts a complete restrictive ceiling, not a partial
-configuration object. Its filesystem rules must all be `deny`. Network modes
+configuration object. Its filesystem rules must all be `deny` or
+`deny-write`. Network modes
 are ordered from narrowest to broadest as `none < mediated < direct`; the
 effective mode is the narrower of base and restriction. When both inputs are
 mediated, the destination allowlists are intersected; an empty intersection

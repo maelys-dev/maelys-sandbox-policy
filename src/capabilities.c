@@ -24,6 +24,9 @@ maelys_sandbox_policy_required_capabilities(const maelys_mir_t *mir) {
     case MAELYS_MIR_FS_DENY:
       c |= MAELYS_SANDBOX_POLICY_CAP_FS_DENY;
       break;
+    case MAELYS_MIR_FS_DENY_WRITE:
+      c |= MAELYS_SANDBOX_POLICY_CAP_FS_DENY_WRITE;
+      break;
     }
   }
   switch (mir->network) {
@@ -77,6 +80,8 @@ const char *maelys_sandbox_policy_capability_name(
     return "network-private-addresses";
   case MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE:
     return "fs-protect-create";
+  case MAELYS_SANDBOX_POLICY_CAP_FS_DENY_WRITE:
+    return "fs-deny-write";
   }
   return NULL;
 }

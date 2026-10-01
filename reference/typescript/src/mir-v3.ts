@@ -5,7 +5,7 @@ const MAX_DESTINATIONS = 1024;
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
 export type FilesystemRule = {
-  access: "read" | "write" | "deny";
+  access: "read" | "write" | "deny" | "deny-write";
   root: "minimal-runtime" | "workspace" | "temp" | "host";
   path: string;
   scope: "exact" | "tree";
@@ -124,7 +124,7 @@ export function verifyMirV3(input: Uint8Array): VerifiedMirV3 {
   if (![1, 2, 3].includes(networkCode) || ![0, 1].includes(processCode)) fail("header values");
   if ((networkCode === 3) !== (destinationCount > 0)) fail("mediated allowlist shape");
 
-  const accessNames = ["", "read", "write", "deny"] as const;
+  const accessNames = ["", "read", "write", "deny", "deny-write"] as const;
   const rootNames = ["", "minimal-runtime", "workspace", "temp", "host"] as const;
   const scopeNames = ["", "exact", "tree"] as const;
   const missingNames = ["", "error", "skip"] as const;
@@ -136,7 +136,7 @@ export function verifyMirV3(input: Uint8Array): VerifiedMirV3 {
     const rootCode = bytes[offset + 2] ?? 0;
     const scopeCode = bytes[offset + 3] ?? 0;
     const missingCode = bytes[offset + 4] ?? 0;
-    if ((bytes[offset] ?? 0) !== 1 || ![1, 2, 3].includes(accessCode) ||
+    if ((bytes[offset] ?? 0) !== 1 || ![1, 2, 3, 4].includes(accessCode) ||
         ![1, 2, 3, 4].includes(rootCode) || ![1, 2].includes(scopeCode) ||
         ![1, 2].includes(missingCode) || (bytes[offset + 5] ?? 1) !== 0 ||
         (bytes[offset + 6] ?? 1) !== 0 || (bytes[offset + 7] ?? 1) !== 0)
@@ -158,7 +158,10 @@ export function verifyMirV3(input: Uint8Array): VerifiedMirV3 {
       accessCode, rootCode, scopeCode, missingCode, pathBytes,
     };
     const previous = rules.at(-1);
-    if (previous && (compareRule(previous, rule) >= 0 || sameTarget(previous, rule)))
+    // One target holds one rule, or a grant followed by its deny-write.
+    if (previous && (compareRule(previous, rule) >= 0 ||
+        (sameTarget(previous, rule) &&
+         !(previous.accessCode <= 2 && rule.accessCode === 4))))
       fail(`filesystem order or duplicate target at ${index}`);
     rules.push(rule);
     offset += 12 + size;

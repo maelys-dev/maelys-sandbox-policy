@@ -1,0 +1,10 @@
+# Under a read grant there is no writing to remove: the read decides.
+rule read tree /workspace
+rule deny-write tree /workspace/.git
+node directory /workspace
+node directory /workspace/.git
+node file /workspace/.git/config
+query /workspace/.git/config read read-rule
+query /workspace read read-rule
+requires fs-deny-write
+compile accepted

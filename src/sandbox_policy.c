@@ -376,10 +376,11 @@ static maelys_mir_result_t compile_one(const maelys_mir_fs_rule_t *r,
       resolve_candidate(root, r->relative, enforce_root, &resolved, err);
   if (result == MAELYS_MIR_ERR_MISSING &&
       r->missing == MAELYS_MIR_MISSING_SKIP) {
-    /* An absent grant grants nothing and is omitted. An absent deny is
-     * kept: dropping it would leave the path unprotected the day it is
-     * created under a grant. */
-    if (r->access != MAELYS_MIR_FS_DENY)
+    /* An absent grant grants nothing and is omitted. An absent deny or
+     * deny-write is kept: dropping it would leave the path unprotected the
+     * day it is created under a grant, and creating it is a write. */
+    if (r->access != MAELYS_MIR_FS_DENY &&
+        r->access != MAELYS_MIR_FS_DENY_WRITE)
       return record_omitted(p, r, root);
     int exists = 0;
     result = resolve_absent(root, r->relative, enforce_root, &resolved, &exists,

@@ -32,6 +32,25 @@ for (const [offset, value] of [[0x33 + 4, 0x04], [0x33 + 5, 0x01]]) {
   await assert.rejects(() => verifyMirV3Digest(tampered), /invalid canonical MIR v3/);
 }
 
+const denyWrite = new Uint8Array(await readFile(path.join(vectorRoot, "deny-write.mir")));
+const { policy: denyWritePolicy } = await verifyMirV3Digest(denyWrite);
+assert.deepEqual(denyWritePolicy.filesystem.rules.map((rule) =>
+  `${rule.access} ${rule.scope} ${rule.path}`), [
+  "write exact ",
+  "deny-write exact ",
+  "write tree ",
+  "deny-write tree .git",
+  "deny tree secrets",
+]);
+// A deny-write before its grant, a deny beside a deny-write and a repeated
+// grant are not canonical.
+for (const [first, second] of [[4, 2], [3, 4], [2, 2]]) {
+  const tampered = denyWrite.slice();
+  tampered[21] = first;
+  tampered[33] = second;
+  await assert.rejects(() => verifyMirV3Digest(tampered), /invalid canonical MIR v3/);
+}
+
 const valid = new Uint8Array(await readFile(path.join(vectorRoot, artifacts[0])));
 const invalid = new Uint8Array(valid.length + 1);
 invalid.set(valid);
