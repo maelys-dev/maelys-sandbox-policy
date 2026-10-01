@@ -98,6 +98,11 @@ maelys_mir_result_t
 maelys_sandbox_policy_plan_finalize(maelys_sandbox_policy_plan_t *plan,
                                     char **out_error);
 
+/* Names every capability of `missing` and returns ERR_UNSUPPORTED. */
+maelys_mir_result_t
+maelys_report_missing_capabilities(maelys_sandbox_policy_capabilities_t missing,
+                                   char **out_error);
+
 void maelys_set_error(char **out_error, const char *format, ...);
 char *maelys_strdup(const char *value);
 int maelys_valid_utf8_no_nul(const uint8_t *bytes, size_t size);

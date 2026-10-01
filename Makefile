@@ -33,7 +33,7 @@ CLI_SCHEMA_SYMBOLS := $(foreach schema,$(CLI_SCHEMAS),\
 	policy_$(subst -,_,$(basename $(notdir $(schema))))_schema=$(schema))
 
 MIR_SRC := src/common.c src/sha256.c src/mir.c src/source_json.c src/inspect_json.c
-POLICY_SRC := src/sandbox_policy.c src/permissions.c
+POLICY_SRC := src/sandbox_policy.c src/permissions.c src/capabilities.c
 MIR_OBJ := $(MIR_SRC:%.c=$(BUILD)/%.o)
 POLICY_OBJ := $(POLICY_SRC:%.c=$(BUILD)/%.o)
 
@@ -92,7 +92,7 @@ $(BUILD)/cli/maelys-policy.o: CPPFLAGS += -isystem $(MAELYS_CLI_DIR)/include -I$
 $(BUILD)/cli/maelys-policy.o: $(GENERATED)/policy_schemas.h | check-dependencies
 
 $(BUILD)/bin/maelys-policy: $(BUILD)/cli/maelys-policy.o $(BUILD)/generated/policy_schemas.o \
-		$(BUILD)/lib/libmaelys-mir.a $(MAELYS_CLI_LIB)
+		$(BUILD)/lib/libmaelys-sandbox-policy.a $(BUILD)/lib/libmaelys-mir.a $(MAELYS_CLI_LIB)
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $^ -o $@
 

@@ -1,0 +1,102 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "policy",
+    "digest",
+    "scope",
+    "required",
+    "resolutionMayRequire",
+    "checked"
+  ],
+  "properties": {
+    "policy": {
+      "type": "string"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "scope": {
+      "const": "mir"
+    },
+    "required": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "fs-read",
+          "fs-write",
+          "fs-deny",
+          "network-none",
+          "network-direct",
+          "network-mediated",
+          "process-tree",
+          "root-ephemeral-write",
+          "network-require-tls-sni",
+          "network-private-addresses",
+          "fs-protect-create"
+        ]
+      }
+    },
+    "resolutionMayRequire": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "fs-read",
+          "fs-write",
+          "fs-deny",
+          "network-none",
+          "network-direct",
+          "network-mediated",
+          "process-tree",
+          "root-ephemeral-write",
+          "network-require-tls-sni",
+          "network-private-addresses",
+          "fs-protect-create"
+        ]
+      }
+    },
+    "checked": {
+      "type": "boolean"
+    },
+    "available": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "fs-read",
+          "fs-write",
+          "fs-deny",
+          "network-none",
+          "network-direct",
+          "network-mediated",
+          "process-tree",
+          "root-ephemeral-write",
+          "network-require-tls-sni",
+          "network-private-addresses",
+          "fs-protect-create"
+        ]
+      }
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "fs-read",
+          "fs-write",
+          "fs-deny",
+          "network-none",
+          "network-direct",
+          "network-mediated",
+          "process-tree",
+          "root-ephemeral-write",
+          "network-require-tls-sni",
+          "network-private-addresses",
+          "fs-protect-create"
+        ]
+      }
+    },
+    "supported": {
+      "type": "boolean"
+    }
+  }
+}

@@ -70,3 +70,92 @@ status=0
   2>"$tmp_dir/old-error.json" || status=$?
 test "$status" = 1 || fail "compile of an invalid source exited $status, not 1"
 grep -q '"code":"VALIDATION_FAILED"' "$tmp_dir/old-error.json" || fail 'invalid source code'
+
+# ---- restrict: a transaction that composes a ceiling over a base --------------
+cat >"$tmp_dir/ceiling.json" <<'JSON'
+{"formatVersion":3,
+ "filesystem":{"default":"deny","rules":[
+   {"access":"deny","path":{"root":"workspace","relative":"secrets"},"missing":"skip"}]},
+ "network":{"mode":"none"},"root":{"mode":"read-only"},
+ "process":{"treeConfinement":"required"}}
+JSON
+"$cli" compile "$tmp_dir/ceiling.json" --output "$tmp_dir/ceiling.mir" --apply >/dev/null
+"$cli" restrict "$tmp_dir/policy.mir" "$tmp_dir/ceiling.mir" --output "$tmp_dir/effective.mir" \
+  --format json --compact >"$tmp_dir/restrict-plan.json"
+grep -q '"mode":"plan"' "$tmp_dir/restrict-plan.json" || fail 'restrict plan'
+grep -q "\"baseDigest\":\"$file_hash\"" "$tmp_dir/restrict-plan.json" || fail 'restrict names its base'
+test ! -e "$tmp_dir/effective.mir" || fail 'restrict plan wrote its output'
+"$cli" restrict "$tmp_dir/policy.mir" "$tmp_dir/ceiling.mir" --output "$tmp_dir/effective.mir" \
+  --apply --format json --compact >"$tmp_dir/restrict-apply.json"
+grep -q '"mode":"apply"' "$tmp_dir/restrict-apply.json" || fail 'restrict --apply'
+"$cli" validate "$tmp_dir/effective.mir" >/dev/null || fail 'restrict wrote non-canonical MIR'
+planned=$(sed 's/.*"digest":"\([0-9a-f]*\)".*/\1/' "$tmp_dir/restrict-plan.json")
+test "$planned" = "$("$cli" hash "$tmp_dir/effective.mir" --field digest)" ||
+  fail 'restrict plan and written policy disagree'
+"$cli" inspect "$tmp_dir/effective.mir" >"$tmp_dir/effective.json"
+grep -q '"path": "secrets"' "$tmp_dir/effective.json" || fail 'restrict lost the ceiling deny'
+grep -q '"path": ".git"' "$tmp_dir/effective.json" || fail 'restrict lost a base rule'
+status=0
+"$cli" restrict "$tmp_dir/policy.mir" "$tmp_dir/ceiling.mir" --output "$tmp_dir/effective.mir" \
+  --apply --format json --compact 2>"$tmp_dir/restrict-exists.json" >/dev/null || status=$?
+test "$status" = 1 || fail "restrict over an existing output exited $status, not 1"
+grep -q '"code":"PRECONDITION_FAILED"' "$tmp_dir/restrict-exists.json" || fail 'restrict over an existing output'
+# A restriction that grants is not a restriction: the base policy is one.
+status=0
+"$cli" restrict "$tmp_dir/ceiling.mir" "$tmp_dir/policy.mir" --output "$tmp_dir/widened.mir" \
+  --apply --format json --compact 2>"$tmp_dir/restrict-grant.json" >"$tmp_dir/restrict-grant.out" || status=$?
+test "$status" = 1 || fail "restrict with a granting restriction exited $status, not 1"
+grep -q '"code":"VALIDATION_FAILED"' "$tmp_dir/restrict-grant.json" || fail 'granting restriction code'
+grep -q 'filesystem grant' "$tmp_dir/restrict-grant.json" || fail 'granting restriction message'
+test ! -s "$tmp_dir/restrict-grant.out" || fail 'restrict wrote to stdout on failure'
+test ! -e "$tmp_dir/widened.mir" || fail 'restrict wrote a refused policy'
+status=0
+"$cli" restrict "$tmp_dir/policy.mir" "$tmp_dir/ceiling.mir" --output "$tmp_dir/x.mir" --dry-run \
+  --format json --compact 2>"$tmp_dir/restrict-dry.json" >/dev/null || status=$?
+test "$status" = 1 || fail 'restrict --dry-run was accepted'
+grep -q '"code":"VALIDATION_FAILED"' "$tmp_dir/restrict-dry.json" || fail 'restrict --dry-run code'
+
+# ---- capabilities: requirements, or a check against a declared set -----------
+"$cli" capabilities "$tmp_dir/policy.mir" --format json --compact >"$tmp_dir/caps.json"
+grep -q '"required":\["fs-read","fs-write","fs-deny","network-none","process-tree"\]' \
+  "$tmp_dir/caps.json" || fail 'capabilities requirements'
+grep -q '"resolutionMayRequire":\["fs-protect-create"\]' "$tmp_dir/caps.json" ||
+  fail 'capabilities does not announce what resolution may add'
+grep -q '"checked":false' "$tmp_dir/caps.json" || fail 'capabilities without --check'
+if grep -q '"supported"' "$tmp_dir/caps.json"; then fail 'a verdict without --check'; fi
+# --check with no --available is a check against nothing, not a listing.
+status=0
+"$cli" capabilities "$tmp_dir/policy.mir" --check --format json --compact >"$tmp_dir/caps-none.json" || status=$?
+test "$status" = 2 || fail "capabilities --check against nothing exited $status, not 2"
+grep -q '"available":\[\]' "$tmp_dir/caps-none.json" || fail 'empty available set'
+grep -q '"missing":\["fs-read","fs-write","fs-deny","network-none","process-tree"\]' \
+  "$tmp_dir/caps-none.json" || fail 'capabilities must name every missing one'
+grep -q '"supported":false' "$tmp_dir/caps-none.json" || fail 'capabilities verdict'
+status=0
+"$cli" capabilities "$tmp_dir/policy.mir" --check --available fs-read --available network-none \
+  --field missing >"$tmp_dir/caps-some.txt" || status=$?
+test "$status" = 2 || fail "partial capabilities exited $status, not 2"
+test "$(tr '\n' ' ' <"$tmp_dir/caps-some.txt")" = 'fs-write fs-deny process-tree ' ||
+  fail 'partial capabilities list'
+"$cli" capabilities "$tmp_dir/policy.mir" --check --available fs-read --available fs-write \
+  --available fs-deny --available network-none --available process-tree \
+  --format json --compact | grep -q '"supported":true' || fail 'sufficient capabilities'
+status=0
+"$cli" capabilities "$tmp_dir/policy.mir" --available fs-read --format json --compact \
+  2>"$tmp_dir/caps-nocheck.json" >/dev/null || status=$?
+test "$status" = 1 || fail '--available without --check was accepted'
+grep -q '"code":"VALIDATION_FAILED"' "$tmp_dir/caps-nocheck.json" || fail '--available needs --check'
+status=0
+"$cli" capabilities "$tmp_dir/policy.mir" --check --available fs-teleport --format json --compact \
+  2>"$tmp_dir/caps-unknown.json" >/dev/null || status=$?
+test "$status" = 1 || fail 'an unknown capability was accepted'
+grep -q '"code":"VALIDATION_FAILED"' "$tmp_dir/caps-unknown.json" || fail 'unknown capability code'
+# Every capability the catalog offers is one the library names.
+"$cli" describe capabilities --format json --compact |
+  sed 's/.*"choices":\[\([^]]*\)\].*/\1/' | tr -d '"' | tr ',' '\n' >"$tmp_dir/choices.txt"
+test "$(wc -l <"$tmp_dir/choices.txt" | tr -d ' ')" = 11 || fail 'capability choices'
+while read -r capability; do
+  status=0
+  "$cli" capabilities "$tmp_dir/policy.mir" --check --available "$capability" >/dev/null 2>&1 || status=$?
+  test "$status" = 2 || fail "capability $capability is offered but not known to the library"
+done <"$tmp_dir/choices.txt"
