@@ -187,31 +187,58 @@ maelys_sandbox_policy_required_capabilities(const maelys_mir_t *mir) {
   return c;
 }
 
-static const char *cap_name(maelys_sandbox_policy_capabilities_t cap) {
+const char *maelys_sandbox_policy_capability_name(
+    maelys_sandbox_policy_capabilities_t cap) {
   switch (cap) {
   case MAELYS_SANDBOX_POLICY_CAP_FS_READ:
-    return "filesystem read";
+    return "fs-read";
   case MAELYS_SANDBOX_POLICY_CAP_FS_WRITE:
-    return "filesystem write";
+    return "fs-write";
   case MAELYS_SANDBOX_POLICY_CAP_FS_DENY:
-    return "filesystem deny";
+    return "fs-deny";
   case MAELYS_SANDBOX_POLICY_CAP_NETWORK_NONE:
-    return "network none";
+    return "network-none";
   case MAELYS_SANDBOX_POLICY_CAP_NETWORK_DIRECT:
-    return "direct network";
+    return "network-direct";
   case MAELYS_SANDBOX_POLICY_CAP_NETWORK_MEDIATED:
-    return "mediated network";
+    return "network-mediated";
   case MAELYS_SANDBOX_POLICY_CAP_PROCESS_TREE:
-    return "process-tree confinement";
+    return "process-tree";
   case MAELYS_SANDBOX_POLICY_CAP_ROOT_EPHEMERAL_WRITE:
-    return "ephemeral writable root";
+    return "root-ephemeral-write";
   case MAELYS_SANDBOX_POLICY_CAP_NETWORK_REQUIRE_TLS_SNI:
-    return "mediated TLS SNI enforcement";
+    return "network-require-tls-sni";
   case MAELYS_SANDBOX_POLICY_CAP_NETWORK_PRIVATE_ADDRESSES:
-    return "mediated private-address destinations";
+    return "network-private-addresses";
+  case MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE:
+    return "fs-protect-create";
   }
-  return "unknown";
+  return NULL;
 }
+
+/* Names every missing capability, never the first alone: a caller fixes
+ * its backend selection once. */
+static maelys_mir_result_t
+report_missing(maelys_sandbox_policy_capabilities_t missing, char **err) {
+  char names[512];
+  size_t used = 0;
+  names[0] = '\0';
+  for (unsigned bit = 0; bit < 64; ++bit) {
+    maelys_sandbox_policy_capabilities_t cap = UINT64_C(1) << bit;
+    if (!(missing & cap))
+      continue;
+    const char *name = maelys_sandbox_policy_capability_name(cap);
+    int written = snprintf(names + used, sizeof(names) - used, "%s%s",
+                           used ? ", " : "", name ? name : "unknown");
+    if (written < 0 || (size_t)written >= sizeof(names) - used)
+      break;
+    used += (size_t)written;
+  }
+  maelys_set_error(err, "sandbox backend lacks required capabilities: %s",
+                   names);
+  return MAELYS_MIR_ERR_UNSUPPORTED;
+}
+
 maelys_mir_result_t
 maelys_sandbox_policy_check_support(const maelys_mir_t *mir,
                              maelys_sandbox_policy_capabilities_t available,
@@ -222,17 +249,7 @@ maelys_sandbox_policy_check_support(const maelys_mir_t *mir,
   }
   maelys_sandbox_policy_capabilities_t missing =
       maelys_sandbox_policy_required_capabilities(mir) & ~available;
-  if (!missing)
-    return MAELYS_MIR_OK;
-  for (unsigned bit = 0; bit < 64; ++bit) {
-    maelys_sandbox_policy_capabilities_t cap = UINT64_C(1) << bit;
-    if (missing & cap) {
-      maelys_set_error(err, "sandbox backend lacks required capability: %s",
-                       cap_name(cap));
-      break;
-    }
-  }
-  return MAELYS_MIR_ERR_UNSUPPORTED;
+  return missing ? report_missing(missing, err) : MAELYS_MIR_OK;
 }
 
 static int under_root(const char *root, const char *path) {
@@ -283,10 +300,142 @@ static maelys_mir_result_t resolve_candidate(const char *root,
   return MAELYS_MIR_OK;
 }
 
+/*
+ * Names a deny target that does not exist: the canonical existing prefix,
+ * then the remaining components as written. The MIR path is already
+ * normalized, so those components are literal names.
+ *
+ * Nothing on the way may make that name ambiguous. A dangling symbolic link
+ * would resolve somewhere else the day its target appears, and a
+ * non-directory in the middle means the path cannot exist as written: both
+ * are refused, never guessed. This names the path at resolution time; what
+ * happens to it afterwards is the backend's to guard.
+ */
+static maelys_mir_result_t resolve_absent(const char *root, const char *relative,
+                                          int enforce_root, char **out,
+                                          int *out_exists, char **err) {
+  *out = NULL;
+  *out_exists = 0;
+  size_t rn = root ? strlen(root) : 0, ln = strlen(relative);
+  char *walk = malloc(rn + ln + 2u);
+  char *current = maelys_strdup("/");
+  if (!walk || !current) {
+    free(walk);
+    free(current);
+    return MAELYS_MIR_ERR_MEMORY;
+  }
+  if (root && ln)
+    (void)snprintf(walk, rn + ln + 2u, "%s/%s", root, relative);
+  else
+    (void)snprintf(walk, rn + ln + 2u, "%s", root ? root : relative);
+  maelys_mir_result_t result = MAELYS_MIR_OK;
+  char *cursor = walk;
+  char *suffix = NULL;
+  while (result == MAELYS_MIR_OK && !suffix) {
+    while (*cursor == '/')
+      ++cursor;
+    if (!*cursor)
+      break;
+    char *end = strchr(cursor, '/');
+    size_t component = end ? (size_t)(end - cursor) : strlen(cursor);
+    size_t cn = strlen(current);
+    char *probe = malloc(cn + component + 2u);
+    if (!probe) {
+      result = MAELYS_MIR_ERR_MEMORY;
+      break;
+    }
+    (void)snprintf(probe, cn + component + 2u, "%s%s%.*s", current,
+                   cn == 1u ? "" : "/", (int)component, cursor);
+    struct stat status;
+    if (lstat(probe, &status) != 0) {
+      if (errno == ENOENT) {
+        suffix = cursor;
+      } else {
+        maelys_set_error(err, "cannot inspect %s on the path of a deny: %s",
+                         probe, strerror(errno));
+        result = MAELYS_MIR_ERR_IO;
+      }
+      free(probe);
+      continue;
+    }
+    if (S_ISLNK(status.st_mode)) {
+      char *target = realpath(probe, NULL);
+      if (!target) {
+        maelys_set_error(err,
+                         errno == ENOENT
+                             ? "a dangling symbolic link lies on the path of a "
+                               "deny, which cannot be named: %s"
+                             : "cannot canonicalize the path of a deny: %s",
+                         probe);
+        free(probe);
+        result = MAELYS_MIR_ERR_IO;
+        continue;
+      }
+      free(probe);
+      probe = target;
+      if (stat(probe, &status) != 0) {
+        maelys_set_error(err, "cannot inspect %s on the path of a deny: %s",
+                         probe, strerror(errno));
+        free(probe);
+        result = MAELYS_MIR_ERR_IO;
+        continue;
+      }
+    }
+    if (end && end[1] && !S_ISDIR(status.st_mode)) {
+      maelys_set_error(err,
+                       "a non-directory lies on the path of a deny, which "
+                       "cannot exist as written: %s",
+                       probe);
+      free(probe);
+      result = MAELYS_MIR_ERR_IO;
+      continue;
+    }
+    free(current);
+    current = probe;
+    cursor += component;
+  }
+  char *prefix = NULL;
+  if (result == MAELYS_MIR_OK) {
+    prefix = realpath(current, NULL);
+    if (!prefix) {
+      maelys_set_error(err, "cannot canonicalize the path of a deny: %s",
+                       current);
+      result = MAELYS_MIR_ERR_IO;
+    }
+  }
+  if (result == MAELYS_MIR_OK && enforce_root && !under_root(root, prefix)) {
+    maelys_set_error(err,
+                     "the path of a deny leaves its symbolic root, through a "
+                     "symlink or because the root is absent: %s",
+                     prefix);
+    result = MAELYS_MIR_ERR_FORMAT;
+  }
+  if (result == MAELYS_MIR_OK && !suffix) {
+    *out = prefix; /* it appeared since the first attempt: an ordinary rule */
+    *out_exists = 1;
+    prefix = NULL;
+  } else if (result == MAELYS_MIR_OK) {
+    size_t pn = strlen(prefix), sn = strlen(suffix);
+    char *path = malloc(pn + sn + 2u);
+    if (!path) {
+      result = MAELYS_MIR_ERR_MEMORY;
+    } else {
+      (void)snprintf(path, pn + sn + 2u, "%s%s%s", prefix, pn == 1u ? "" : "/",
+                     suffix);
+      *out = path;
+    }
+  }
+  free(prefix);
+  free(current);
+  free(walk);
+  return result;
+}
+
 static maelys_mir_result_t append_rule(maelys_sandbox_policy_plan_t *p,
                                        maelys_mir_fs_access_t access,
                                        maelys_mir_path_scope_t scope,
-                                       char *path) {
+                                       char *path,
+                                       maelys_sandbox_policy_missing_t missing) {
   if (p->rule_count == p->rule_capacity) {
     size_t next = p->rule_capacity ? p->rule_capacity * 2u : 16u;
     maelys_sandbox_policy_resolved_rule_t *grown =
@@ -299,7 +448,9 @@ static maelys_mir_result_t append_rule(maelys_sandbox_policy_plan_t *p,
     p->rule_capacity = next;
   }
   p->rules[p->rule_count++] =
-      (maelys_sandbox_policy_resolved_rule_t){access, scope, path};
+      (maelys_sandbox_policy_resolved_rule_t){access, scope, path, missing};
+  if (missing == MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE)
+    p->required |= MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE;
   return MAELYS_MIR_OK;
 }
 static maelys_mir_result_t compile_one(const maelys_mir_fs_rule_t *r,
@@ -310,30 +461,35 @@ static maelys_mir_result_t compile_one(const maelys_mir_fs_rule_t *r,
       resolve_candidate(root, r->relative, enforce_root, &resolved, err);
   if (result == MAELYS_MIR_ERR_MISSING &&
       r->missing == MAELYS_MIR_MISSING_SKIP) {
-    return MAELYS_MIR_OK;
+    /* An absent grant grants nothing and is omitted. An absent deny is
+     * kept: dropping it would leave the path unprotected the day it is
+     * created under a grant. */
+    if (r->access != MAELYS_MIR_FS_DENY)
+      return MAELYS_MIR_OK;
+    int exists = 0;
+    result = resolve_absent(root, r->relative, enforce_root, &resolved, &exists,
+                            err);
+    if (result)
+      return result;
+    return append_rule(p, r->access, r->scope, resolved,
+                       exists ? MAELYS_SANDBOX_POLICY_MISSING_ERROR
+                              : MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE);
   }
   if (result == MAELYS_MIR_ERR_MISSING)
     maelys_set_error(err, "required sandbox path does not exist");
   if (result)
     return result;
-  return append_rule(p, r->access, r->scope, resolved);
+  return append_rule(p, r->access, r->scope, resolved,
+                     MAELYS_SANDBOX_POLICY_MISSING_ERROR);
 }
 
-maelys_mir_result_t
-maelys_sandbox_policy_compile(const maelys_mir_t *mir,
-                       const maelys_sandbox_policy_host_t *host,
-                       maelys_sandbox_policy_capabilities_t available,
-                       maelys_sandbox_policy_plan_t **out, char **err) {
-  if (out)
-    *out = NULL;
-  if (!mir || !host || !out) {
-    maelys_set_error(err, "MIR, host context, and plan output are required");
-    return MAELYS_MIR_ERR_ARGUMENT;
-  }
-  maelys_mir_result_t result =
-      maelys_sandbox_policy_check_support(mir, available, err);
-  if (result)
-    return result;
+/* Resolves the policy on this host, whatever the backend offers: the plan
+ * records every capability it requires, the MIR's and those resolution
+ * discovered. */
+static maelys_mir_result_t
+resolve_plan(const maelys_mir_t *mir, const maelys_sandbox_policy_host_t *host,
+             maelys_sandbox_policy_plan_t **out, char **err) {
+  maelys_mir_result_t result = MAELYS_MIR_OK;
   if (mir->network == MAELYS_MIR_NETWORK_MEDIATED && !host->network_mediator) {
     maelys_set_error(
         err,
@@ -345,6 +501,7 @@ maelys_sandbox_policy_compile(const maelys_mir_t *mir,
     return MAELYS_MIR_ERR_MEMORY;
   p->network = mir->network;
   p->root_mode = mir->root_mode;
+  p->required = maelys_sandbox_policy_required_capabilities(mir);
   if (host->network_mediator && mir->network == MAELYS_MIR_NETWORK_MEDIATED) {
     p->network_mediator = maelys_strdup(host->network_mediator);
     if (!p->network_mediator) {
@@ -422,6 +579,65 @@ bad:
   return result;
 }
 
+maelys_mir_result_t
+maelys_sandbox_policy_compile(const maelys_mir_t *mir,
+                       const maelys_sandbox_policy_host_t *host,
+                       maelys_sandbox_policy_capabilities_t available,
+                       maelys_sandbox_policy_plan_t **out, char **err) {
+  if (out)
+    *out = NULL;
+  if (!mir || !host || !out) {
+    maelys_set_error(err, "MIR, host context, and plan output are required");
+    return MAELYS_MIR_ERR_ARGUMENT;
+  }
+  maelys_sandbox_policy_capabilities_t missing =
+      maelys_sandbox_policy_required_capabilities(mir) & ~available;
+  maelys_sandbox_policy_plan_t *plan = NULL;
+  if (missing) {
+    /* Already refused. Resolution only completes the report when it
+     * succeeds; its own failure does not replace the capability one. */
+    char *ignored = NULL;
+    if (resolve_plan(mir, host, &plan, &ignored) == MAELYS_MIR_OK)
+      missing |= plan->required & ~available;
+    maelys_mir_error_free(ignored);
+    maelys_sandbox_policy_plan_destroy(plan);
+    return report_missing(missing, err);
+  }
+  maelys_mir_result_t result = resolve_plan(mir, host, &plan, err);
+  if (result)
+    return result;
+  missing = plan->required & ~available;
+  if (missing) {
+    maelys_sandbox_policy_plan_destroy(plan);
+    return report_missing(missing, err);
+  }
+  *out = plan;
+  return MAELYS_MIR_OK;
+}
+
+maelys_mir_result_t maelys_sandbox_policy_resolved_capabilities(
+    const maelys_mir_t *mir, const maelys_sandbox_policy_host_t *host,
+    maelys_sandbox_policy_capabilities_t *out, char **err) {
+  if (out)
+    *out = 0;
+  if (!mir || !host || !out) {
+    maelys_set_error(err, "MIR, host context, and output are required");
+    return MAELYS_MIR_ERR_ARGUMENT;
+  }
+  maelys_sandbox_policy_plan_t *plan = NULL;
+  maelys_mir_result_t result = resolve_plan(mir, host, &plan, err);
+  if (result)
+    return result;
+  *out = plan->required;
+  maelys_sandbox_policy_plan_destroy(plan);
+  return MAELYS_MIR_OK;
+}
+
+maelys_sandbox_policy_capabilities_t maelys_sandbox_policy_plan_required_capabilities(
+    const maelys_sandbox_policy_plan_t *p) {
+  return p ? p->required : 0;
+}
+
 void maelys_sandbox_policy_plan_destroy(maelys_sandbox_policy_plan_t *p) {
   if (!p)
     return;
@@ -443,7 +659,8 @@ maelys_sandbox_policy_plan_rule_at(const maelys_sandbox_policy_plan_t *p, size_t
   if (!p || !out || i >= p->rule_count)
     return MAELYS_MIR_ERR_ARGUMENT;
   *out = (maelys_sandbox_policy_resolved_rule_view_t){
-      p->rules[i].access, p->rules[i].scope, p->rules[i].path};
+      p->rules[i].access, p->rules[i].scope, p->rules[i].path,
+      p->rules[i].missing};
   return MAELYS_MIR_OK;
 }
 maelys_mir_network_mode_t

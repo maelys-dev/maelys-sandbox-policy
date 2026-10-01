@@ -100,12 +100,45 @@ barrier is not lifted by a library upgrade.
   granting reading. Until then such policies are refused by the migration
   check rather than widened.
 - **An exception inside a denied tree is not expressible**, by design.
-- **A deny whose target does not exist when the plan is resolved** is not
-  yet carried to the backend. The requirement that a backend protect the
-  creation of such a path is specified with the release that carries it;
-  no guarantee is claimed here.
 - The evaluator answers for the rules of a plan. It does not read the
   filesystem and says nothing about changes between resolution and launch.
+
+## A deny on a path that does not exist
+
+A `deny` with `missing: skip` whose target is absent at resolution used to be
+dropped from the plan, so the path was unprotected the day it appeared under
+a grant. It is now **kept**:
+
+| Situation at resolution | Result |
+|---|---|
+| absent path, `missing: error` | compilation fails with `MAELYS_MIR_ERR_MISSING` |
+| absent grant, `missing: skip` | rule omitted: it grants nothing |
+| absent deny, `missing: skip` | rule kept with `missing = protect-create` |
+
+A kept rule carries `MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE` and its
+plan requires the capability `fs-protect-create`
+(`MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE`). The capability is discovered
+by resolution, not readable from the MIR alone;
+`maelys_sandbox_policy_resolved_capabilities()` returns the complete set, and
+a refusal names every missing capability at once. Without it no plan is
+returned: the launch is refused, never run with the rule removed.
+
+The path of such a rule is the **canonical existing prefix** followed by the
+**remaining components as written**. A dangling symbolic link or a
+non-directory on the way would make that name ambiguous, and a prefix that
+leaves its symbolic root is an escape: all three are refused. The path names
+the target as it stood at resolution. It is a designation, not a guarantee:
+keeping the path from being created, linked or renamed into place, including
+by a process outside the sandbox, belongs to the backend that announces the
+capability, and it must never treat the rule as `error` or skip it.
+
+**This costs availability, deliberately.** `examples/workspace.json` grants
+read on the workspace and denies `.git` with `missing: skip`. In a workspace
+that has no `.git`, the policy used to compile, and protected nothing; it is
+now refused before launch by every backend that does not announce
+`fs-protect-create`. The example is kept as it is. A read-only parent is not
+a reason to skip the protection: another process of the host can create the
+path during the execution, and the workspace grant would then expose it.
 
 ## Conformance
 

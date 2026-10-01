@@ -15,7 +15,19 @@
   tree is no longer expressible;
 - add the reference evaluator `maelys_sandbox_policy_plan_evaluate()` and the
   versioned corpus `corpus/permissions`, installed under
-  `share/maelys-sandbox-policy/corpus`, for consumers to prove conformance.
+  `share/maelys-sandbox-policy/corpus`, for consumers to prove conformance;
+- **breaking:** a `deny` with `missing: skip` on an absent path is no longer
+  dropped from the plan. It is kept with `missing = protect-create` on the
+  resolved rule, named by its canonical existing prefix and literal remaining
+  components, and the plan requires the new capability `fs-protect-create`.
+  Without it compilation fails and no plan is returned.
+  `examples/workspace.json` is therefore refused in a workspace without
+  `.git` until a backend announces that capability; it used to compile and
+  protect nothing. `missing: error` still fails, and an absent grant is still
+  omitted;
+- report every missing capability at once, by stable identifier
+  (`maelys_sandbox_policy_capability_name()`), including those only resolution
+  discovers (`maelys_sandbox_policy_resolved_capabilities()`).
 
 ## 0.5.1 — 2026-09-27
 

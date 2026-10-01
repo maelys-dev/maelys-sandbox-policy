@@ -92,7 +92,7 @@ static void run_case(const char *file) {
   plan->rule_capacity = MAX_RULES;
   static query_t queries[MAX_QUERIES];
   size_t query_count = 0;
-  int compile_seen = 0, refused = 0;
+  int compile_seen = 0, refused = 0, requires_protection = 0;
   maelys_sandbox_policy_permission_t before = 0, after = 0;
   char line[512];
   while (fgets(line, sizeof(line), stream)) {
@@ -113,6 +113,9 @@ static void run_case(const char *file) {
         FAIL_CASE("invalid rule");
         continue;
       }
+      rule.missing = strstr(line, " protect-create")
+                         ? MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE
+                         : MAELYS_SANDBOX_POLICY_MISSING_ERROR;
       rule.path = maelys_strdup(c);
       plan->rules[plan->rule_count++] = rule;
     } else if (sscanf(line, "query %255s %63s %63s", c, a, b) == 3) {
@@ -130,6 +133,12 @@ static void run_case(const char *file) {
       compile_seen = refused = 1;
       if (!parse_permission(a, &before) || !parse_permission(d, &after))
         FAIL_CASE("invalid compile expectation");
+    } else if (sscanf(line, "requires %63s", a) == 1) {
+      const char *name = maelys_sandbox_policy_capability_name(
+          MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE);
+      if (strcmp(a, name) != 0)
+        FAIL_CASE("unknown capability %s", a);
+      requires_protection = 1;
     } else if (strcmp(line, "compile accepted\n") == 0) {
       compile_seen = 1;
     } else {
@@ -140,6 +149,18 @@ static void run_case(const char *file) {
   line_number = 0;
   if (!compile_seen || query_count == 0)
     FAIL_CASE("a case needs queries and one compile line");
+
+  /* A plan requires the protection exactly when a rule carries it. */
+  int carries_protection = 0;
+  for (size_t i = 0; i < plan->rule_count; ++i) {
+    if (plan->rules[i].missing == MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE) {
+      carries_protection = 1;
+      if (plan->rules[i].access != MAELYS_MIR_FS_DENY)
+        FAIL_CASE("protect-create on a rule that is not a deny");
+    }
+  }
+  if (carries_protection != requires_protection)
+    FAIL_CASE("the requires line and the protect-create rules disagree");
 
   /* The contract holds for every order of the rules. */
   check_queries(file, plan->rules, plan->rule_count, queries, query_count,
@@ -292,6 +313,7 @@ static void test_conflict_search_is_complete(void) {
       rules[i].access = (maelys_mir_fs_access_t)(1u + next_random() % 3u);
       rules[i].scope = (maelys_mir_path_scope_t)(1u + next_random() % 2u);
       rules[i].path = (char *)paths[next_random() % 10u];
+      rules[i].missing = MAELYS_SANDBOX_POLICY_MISSING_ERROR;
     }
     maelys_plan_conflict_t conflict;
     maelys_mir_result_t found = maelys_plan_find_conflict(rules, count, &conflict);

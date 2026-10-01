@@ -29,13 +29,30 @@ enum {
   MAELYS_SANDBOX_POLICY_CAP_PROCESS_TREE = UINT64_C(1) << 6,
   MAELYS_SANDBOX_POLICY_CAP_ROOT_EPHEMERAL_WRITE = UINT64_C(1) << 7,
   MAELYS_SANDBOX_POLICY_CAP_NETWORK_REQUIRE_TLS_SNI = UINT64_C(1) << 8,
-  MAELYS_SANDBOX_POLICY_CAP_NETWORK_PRIVATE_ADDRESSES = UINT64_C(1) << 9
+  MAELYS_SANDBOX_POLICY_CAP_NETWORK_PRIVATE_ADDRESSES = UINT64_C(1) << 9,
+  /* The backend keeps a denied path that does not exist yet from being
+   * created, linked or renamed into place. Required by resolution, when a
+   * deny names an absent target: it cannot be read from the MIR alone. */
+  MAELYS_SANDBOX_POLICY_CAP_FS_PROTECT_CREATE = UINT64_C(1) << 10
 };
+
+/* What a backend must do about a resolved rule whose path is absent at
+ * launch. ERROR: the path existed at resolution and the launch fails
+ * without it. PROTECT_CREATE: a deny whose target did not exist at
+ * resolution; the path is the canonical existing prefix followed by the
+ * literal remaining components. That names the path and guarantees nothing:
+ * protecting it against creation, links and renames is the backend's, which
+ * must never downgrade this value to ERROR nor skip the rule. */
+typedef enum maelys_sandbox_policy_missing {
+  MAELYS_SANDBOX_POLICY_MISSING_ERROR = 1,
+  MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE = 2
+} maelys_sandbox_policy_missing_t;
 
 typedef struct maelys_sandbox_policy_resolved_rule_view {
   maelys_mir_fs_access_t access;
   maelys_mir_path_scope_t scope;
   const char *path;
+  maelys_sandbox_policy_missing_t missing;
 } maelys_sandbox_policy_resolved_rule_view_t;
 
 typedef enum maelys_sandbox_policy_permission {
@@ -74,8 +91,23 @@ maelys_mir_result_t maelys_sandbox_policy_host_add_minimal_runtime_root(
 maelys_mir_result_t maelys_sandbox_policy_host_set_network_mediator(
     maelys_sandbox_policy_host_t *host, const char *mediator_id, char **out_error);
 
+/* The capabilities the MIR requires by itself. Resolution may require more:
+ * see maelys_sandbox_policy_resolved_capabilities(). */
 maelys_sandbox_policy_capabilities_t
 maelys_sandbox_policy_required_capabilities(const maelys_mir_t *mir);
+/* Every capability the policy requires on this host, those of the MIR and
+ * those resolution discovers, so that a caller can report all the missing
+ * ones at once. It resolves paths as compile does and returns no plan. */
+maelys_mir_result_t maelys_sandbox_policy_resolved_capabilities(
+    const maelys_mir_t *mir, const maelys_sandbox_policy_host_t *host,
+    maelys_sandbox_policy_capabilities_t *out_required, char **out_error);
+/* Stable identifier of one capability bit, such as "fs-protect-create";
+ * NULL for a value that is not exactly one known capability. */
+const char *
+maelys_sandbox_policy_capability_name(maelys_sandbox_policy_capabilities_t capability);
+/* The capabilities this plan requires, resolution included. */
+maelys_sandbox_policy_capabilities_t maelys_sandbox_policy_plan_required_capabilities(
+    const maelys_sandbox_policy_plan_t *plan);
 maelys_mir_result_t
 maelys_sandbox_policy_check_support(const maelys_mir_t *mir,
                              maelys_sandbox_policy_capabilities_t available,

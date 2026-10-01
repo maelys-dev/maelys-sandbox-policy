@@ -28,11 +28,16 @@ One case per `cases/*.case` file, UTF-8, one directive per line; `#` starts
 a comment. Paths contain no whitespace.
 
 ```
-rule <read|write|deny> <exact|tree> <absolute path>
+rule <read|write|deny> <exact|tree> <absolute path> [protect-create]
+requires <capability>
 query <absolute path> <none|read|read-write> <default-deny|deny-rule|write-rule|read-rule>
 compile <accepted|refused before=<permission> after=<permission>>
 ```
 
+- `protect-create` marks a deny whose target did not exist when the plan was
+  resolved (`MAELYS_SANDBOX_POLICY_MISSING_PROTECT_CREATE`). It decides like
+  any deny. `requires fs-protect-create` states that the plan needs that
+  capability, which it does exactly when a rule carries the mark.
 - `query` lines state what the contract grants. They hold for every case,
   including the refused ones, and for every order of the rules.
 - `compile accepted`: `maelys_sandbox_policy_compile` returns these rules.
@@ -49,7 +54,9 @@ stated**, or when the plan is **refused before launch** because the backend
 cannot guarantee it. A refusal is not an enforced case and is reported
 apart. Refused cases never reach a backend.
 
-What this corpus does not cover yet: a deny whose target does not exist
-when the plan is resolved. Its guarantee is specified with the
-`protect-create` requirement of resolved rules, in the release that
-carries it.
+For a `protect-create` rule, enforcing means more than answering the
+queries: the backend keeps the path from being created, linked or renamed
+into place for the whole execution. A backend that does not announce
+`fs-protect-create` refuses the plan before launch, which is conformant and
+reported apart. The corpus states the requirement; it cannot prove that
+guarantee, which each backend demonstrates with its own tests.
