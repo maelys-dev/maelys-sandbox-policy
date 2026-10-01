@@ -10,6 +10,9 @@
   of the paths above, in N log N comparisons: under a second at that maximum.
   Accepted and refused policies, witnesses and diagnostics are unchanged; the
   earlier search is kept as the definition the new one is tested against;
+- find the name of a reported witness in one pass over the rules. Trying
+  each `maelys-witness-K` against every rule cost the product of the two
+  when rules were named like witnesses; the name chosen is unchanged;
 - add `maelys_sandbox_policy_plan_contains()` and `maelys-policy contains
   BOUNDARY CANDIDATE`: whether a candidate policy, resolved on a host, grants
   nothing its boundary does not. Nested paths are decided, since both plans

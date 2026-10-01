@@ -129,30 +129,64 @@ legacy_evaluate(const maelys_sandbox_policy_resolved_rule_t *rules,
                             : permission_of(rules[winner].access);
 }
 
-/* A path strictly inside `base` that no rule names nor lies under, so the
- * rules applying to it are exactly the tree rules at or above `base`. Each
- * rule path can spoil one candidate at most, so count + 1 attempts suffice. */
+/*
+ * A path strictly inside `base` that no rule names nor lies under, so the
+ * rules applying to it are exactly the tree rules at or above `base`. It is
+ * `base/maelys-witness-K` for the smallest K no rule path occupies.
+ *
+ * One pass marks the numbers that rule paths occupy, then the first free
+ * one is taken: each rule path can occupy one number at most, so one of
+ * 0..count is free. Trying each number against every rule, as this once
+ * did, costs the product of the two when rules are named like witnesses.
+ */
+#define WITNESS_NAME "maelys-witness-"
+
 char *maelys_plan_descendant_witness(
     const maelys_sandbox_policy_resolved_rule_t *rules, size_t count,
     const char *base) {
   size_t base_length = strlen(base);
-  size_t size = base_length + 48u;
-  char *candidate = malloc(size);
-  if (!candidate)
+  /* The prefix every occupied path starts with: "<base>/maelys-witness-",
+   * the root being its own separator. */
+  size_t stem_length = (base_length == 1u ? 0u : base_length) + 1u +
+                       (sizeof(WITNESS_NAME) - 1u);
+  char *witness = malloc(stem_length + 24u);
+  unsigned char *occupied = calloc(count / 8u + 1u, 1u);
+  if (!witness || !occupied) {
+    free(witness);
+    free(occupied);
     return NULL;
-  for (size_t attempt = 0; attempt <= count; ++attempt) {
-    (void)snprintf(candidate, size, "%s/maelys-witness-%zu",
-                   base_length == 1u ? "" : base, attempt);
-    size_t n = strlen(candidate);
-    int taken = 0;
-    for (size_t i = 0; i < count && !taken; ++i)
-      taken = strncmp(rules[i].path, candidate, n) == 0 &&
-              (rules[i].path[n] == '\0' || rules[i].path[n] == '/');
-    if (!taken)
-      return candidate;
   }
-  free(candidate);
-  return NULL;
+  (void)snprintf(witness, stem_length + 24u, "%s/" WITNESS_NAME,
+                 base_length == 1u ? "" : base);
+  for (size_t i = 0; i < count; ++i) {
+    const char *path = rules[i].path;
+    if (strncmp(path, witness, stem_length) != 0)
+      continue;
+    /* The number as snprintf writes it: digits, no leading zero, ending the
+     * component. Anything else is another name and occupies nothing. */
+    const char *digits = path + stem_length;
+    if (*digits < '0' || *digits > '9' || (*digits == '0' && digits[1] >= '0' &&
+                                           digits[1] <= '9'))
+      continue;
+    size_t number = 0;
+    int in_range = 1;
+    const char *cursor = digits;
+    for (; *cursor >= '0' && *cursor <= '9'; ++cursor) {
+      size_t digit = (size_t)(*cursor - '0');
+      if (in_range && digit <= count && number <= (count - digit) / 10u)
+        number = number * 10u + digit;
+      else
+        in_range = 0; /* beyond count: never a candidate */
+    }
+    if (in_range && (*cursor == '\0' || *cursor == '/'))
+      occupied[number / 8u] |= (unsigned char)(1u << (number % 8u));
+  }
+  size_t free_number = 0;
+  while (occupied[free_number / 8u] & (1u << (free_number % 8u)))
+    ++free_number;
+  free(occupied);
+  (void)snprintf(witness + stem_length, 24u, "%zu", free_number);
+  return witness;
 }
 
 static int conflict_at(const maelys_sandbox_policy_resolved_rule_t *rules,

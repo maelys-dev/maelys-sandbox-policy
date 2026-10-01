@@ -69,6 +69,21 @@ static maelys_sandbox_policy_resolved_rule_t *shape(const char *name,
                       path);
     }
   }
+  if (strcmp(name, "conflict-named") == 0 && count >= 4u) {
+    /* A conflict below /w/hub, whose every witness number is a rule: the
+     * report needs the first free one among count. */
+    for (size_t i = 0; i < count; ++i) {
+      free(rules[i].path);
+      (void)snprintf(path, sizeof(path), "/w/hub/maelys-witness-%zu", i);
+      rules[i] = rule(MAELYS_MIR_FS_DENY, MAELYS_MIR_SCOPE_EXACT, path);
+    }
+    free(rules[0].path);
+    free(rules[1].path);
+    free(rules[2].path);
+    rules[0] = rule(MAELYS_MIR_FS_DENY, MAELYS_MIR_SCOPE_TREE, "/w");
+    rules[1] = rule(MAELYS_MIR_FS_READ, MAELYS_MIR_SCOPE_TREE, "/w/hub");
+    rules[2] = rule(MAELYS_MIR_FS_DENY, MAELYS_MIR_SCOPE_EXACT, "/w/hub");
+  }
   if (strcmp(name, "conflict") == 0) { /* found last, reported once */
     free(rules[count - 1u].path);
     (void)snprintf(path, sizeof(path), "/w/d%07zu/reopened", count - 2u);
@@ -78,8 +93,9 @@ static maelys_sandbox_policy_resolved_rule_t *shape(const char *name,
 }
 
 static void bench_search(void) {
-  static const char *const shapes[] = {"siblings", "witness-names", "chains",
-                                       "repeated", "conflict"};
+  static const char *const shapes[] = {"siblings",       "witness-names",
+                                       "chains",         "repeated",
+                                       "conflict",       "conflict-named"};
   static const size_t sizes[] = {4096u, 16384u, 65536u, 262144u};
   printf("%-14s %8s %12s %12s\n", "shape", "rules", "sorted (s)",
          "reference (s)");
@@ -87,7 +103,7 @@ static void bench_search(void) {
     for (size_t n = 0; n < sizeof(sizes) / sizeof(sizes[0]); ++n) {
       size_t count = sizes[n];
       maelys_sandbox_policy_resolved_rule_t *rules = shape(shapes[s], count);
-      maelys_mir_result_t expected = strcmp(shapes[s], "conflict") == 0
+      maelys_mir_result_t expected = strncmp(shapes[s], "conflict", 8u) == 0
                                          ? MAELYS_MIR_ERR_CONFLICT
                                          : MAELYS_MIR_OK;
       double sorted = seconds(maelys_plan_find_conflict, rules, count, expected);
@@ -113,6 +129,33 @@ static void bench_containment(void) {
   static const size_t sizes[] = {4096u, 16384u, 262144u};
   printf("\n%-14s %8s %12s %12s\n", "containment", "rules", "pass (s)",
          "reference (s)");
+  /* A candidate that exceeds below /w, where the boundary names every
+   * witness number: the verdict needs the first free one among count. */
+  for (size_t n = 0; n < 3u; ++n) {
+    size_t count = sizes[n];
+    maelys_sandbox_policy_resolved_rule_t *boundary =
+        shape("witness-names", count);
+    free(boundary[0].path);
+    boundary[0] = rule(MAELYS_MIR_FS_DENY, MAELYS_MIR_SCOPE_EXACT, "/w");
+    maelys_sandbox_policy_resolved_rule_t candidate[] = {
+        {MAELYS_MIR_FS_READ, MAELYS_MIR_SCOPE_TREE, (char *)"/w",
+         MAELYS_SANDBOX_POLICY_MISSING_ERROR},
+        {MAELYS_MIR_FS_DENY, MAELYS_MIR_SCOPE_EXACT, (char *)"/w",
+         MAELYS_SANDBOX_POLICY_MISSING_ERROR}};
+    char *witness = NULL;
+    clock_t start = clock();
+    maelys_mir_result_t result =
+        maelys_plan_filesystem_excess(boundary, count, candidate, 2u, &witness);
+    double pass = (double)(clock() - start) / CLOCKS_PER_SEC;
+    if (result != MAELYS_MIR_OK || !witness)
+      exit(1);
+    printf("%-14s %8zu %12.3f %12s\n", "exceeds-named", count, pass, "not run");
+    fflush(stdout);
+    free(witness);
+    for (size_t i = 0; i < count; ++i)
+      free(boundary[i].path);
+    free(boundary);
+  }
   for (size_t s = 0; s < 2u; ++s) {
     for (size_t n = 0; n < 3u; ++n) {
       size_t count = sizes[n];

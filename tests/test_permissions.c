@@ -454,6 +454,87 @@ static void test_search_matches_reference(void) {
   CHECK(conflicts > 5000u && agreements > 5000u);
 }
 
+/* ---- witness names ---------------------------------------------------------- */
+
+/* The generator as it was first written: each number in turn, against
+ * every rule. Quadratic, and the definition of the choice: the smallest
+ * number whose path no rule names nor lies under. */
+static char *witness_by_trial(const maelys_sandbox_policy_resolved_rule_t *rules,
+                              size_t count, const char *base) {
+  size_t base_length = strlen(base);
+  size_t size = base_length + 48u;
+  char *candidate = malloc(size);
+  for (size_t attempt = 0; attempt <= count; ++attempt) {
+    (void)snprintf(candidate, size, "%s/maelys-witness-%zu",
+                   base_length == 1u ? "" : base, attempt);
+    size_t n = strlen(candidate);
+    int taken = 0;
+    for (size_t i = 0; i < count && !taken; ++i)
+      taken = strncmp(rules[i].path, candidate, n) == 0 &&
+              (rules[i].path[n] == '\0' || rules[i].path[n] == '/');
+    if (!taken)
+      return candidate;
+  }
+  free(candidate);
+  return NULL;
+}
+
+static void test_witness_choice(void) {
+  /* Names that occupy a number, and names that only look like it. */
+  static const char *const names[] = {
+      "maelys-witness-0",    "maelys-witness-1",   "maelys-witness-2",
+      "maelys-witness-3",    "maelys-witness-5",   "maelys-witness-10",
+      "maelys-witness-0/x",  "maelys-witness-2/y/z", "maelys-witness-01",
+      "maelys-witness-1x",   "maelys-witness-",    "maelys-witness-00",
+      "maelys-witness",      "maelys-witness-4-",  "other",
+      "maelys-witness-99999999999999999999999999", "maelys-witness-4"};
+  static const char *const bases[] = {"/", "/w", "/w/maelys-witness-0"};
+  char storage[12][96];
+  for (unsigned round = 0; round < 40000u; ++round) {
+    maelys_sandbox_policy_resolved_rule_t rules[12];
+    size_t count = next_random() % 13u;
+    const char *base = bases[next_random() % 3u];
+    for (size_t i = 0; i < count; ++i) {
+      const char *under = bases[next_random() % 3u];
+      (void)snprintf(storage[i], sizeof(storage[i]), "%s/%s",
+                     strlen(under) == 1u ? "" : under,
+                     names[next_random() % (sizeof(names) / sizeof(names[0]))]);
+      rules[i].path = storage[i];
+      rules[i].access = MAELYS_MIR_FS_DENY;
+      rules[i].scope = MAELYS_MIR_SCOPE_EXACT;
+      rules[i].missing = MAELYS_SANDBOX_POLICY_MISSING_ERROR;
+    }
+    char *got = maelys_plan_descendant_witness(rules, count, base);
+    char *expected = witness_by_trial(rules, count, base);
+    if (!got || !expected || strcmp(got, expected) != 0) {
+      fprintf(stderr, "FAIL %s: round %u: witness of %s is %s, by trial %s\n",
+              __FILE__, round, base, got ? got : "-", expected ? expected : "-");
+      ++failures;
+    }
+    free(got);
+    free(expected);
+    if (failures)
+      return;
+  }
+  /* Every number up to count occupied but the last. */
+  enum { MANY = 600 };
+  static char many_paths[MANY][40];
+  static maelys_sandbox_policy_resolved_rule_t many[MANY];
+  for (size_t i = 0; i < MANY; ++i) {
+    (void)snprintf(many_paths[i], sizeof(many_paths[i]),
+                   "/w/maelys-witness-%zu", i);
+    many[i] = (maelys_sandbox_policy_resolved_rule_t){
+        MAELYS_MIR_FS_DENY, MAELYS_MIR_SCOPE_EXACT, many_paths[i],
+        MAELYS_SANDBOX_POLICY_MISSING_ERROR};
+  }
+  char *last = maelys_plan_descendant_witness(many, MANY, "/w");
+  CHECK(last && strcmp(last, "/w/maelys-witness-600") == 0);
+  free(last);
+  char *none = maelys_plan_descendant_witness(NULL, 0u, "/");
+  CHECK(none && strcmp(none, "/maelys-witness-0") == 0);
+  free(none);
+}
+
 /* ---- containment ------------------------------------------------------------ */
 
 /*
@@ -670,6 +751,7 @@ int main(int argc, char **argv) {
   test_corpus(argv[1]);
   test_conflict_search_is_complete();
   test_search_matches_reference();
+  test_witness_choice();
   test_containment_is_exact();
   test_containment_matches_reference();
   test_evaluate_arguments();

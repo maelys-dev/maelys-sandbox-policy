@@ -127,6 +127,13 @@ without a conflict:
 both plans together, so it costs the same order for their sum, and compares
 at most 1 024 destinations against 1 024.
 
+A reported witness below a path is named `maelys-witness-K`, for the
+smallest K no rule occupies. It is found in one pass over the rules, so
+rules named like witnesses cost nothing more: a boundary of 262 144 such
+rules, exceeded by a candidate of two, is compared in under 0.2 s. Trying
+each K against every rule, as 0.6.0 did when it reported a conflict, cost
+the product of the two.
+
 The spread is the shape of the paths: siblings are cheapest, chains two
 hundred components deep the most expensive. The largest plan, 262 144 rules
 on absent targets, compiles in 3.7 s and holds 15 MB of paths and 6 MB of

@@ -335,3 +335,27 @@ status=0
   2>"$tmp_dir/contains-noroot.json" >/dev/null || status=$?
 test "$status" = 1 || fail 'contains without the roots it needs'
 grep -q '"code":"PRECONDITION_FAILED"' "$tmp_dir/contains-noroot.json" || fail 'contains missing root code'
+
+# ---- diagnostic priority: the host context before the policy files ------------
+# With an invalid context and an invalid policy file at once, every command
+# that resolves reports the context: options are judged before operand files.
+both_invalid() { # COMMAND [OPERAND...]
+  status=0
+  "$cli" "$@" --workspace "$tmp_dir/absent-root" --format json --compact \
+    2>"$tmp_dir/priority.json" >"$tmp_dir/priority.out" || status=$?
+  test "$status" = 1 || fail "$1 with an invalid context and file exited $status, not 1"
+  grep -q '"code":"VALIDATION_FAILED"' "$tmp_dir/priority.json" ||
+    fail "$1 does not report the invalid context first"
+  grep -q -- '--workspace' "$tmp_dir/priority.json" || fail "$1 does not name --workspace"
+  if grep -q 'NOT_FOUND' "$tmp_dir/priority.json"; then fail "$1 reported the file first"; fi
+  test ! -s "$tmp_dir/priority.out" || fail "$1 wrote to stdout on failure"
+}
+both_invalid resolve "$tmp_dir/no-such.mir"
+both_invalid evaluate "$tmp_dir/no-such.mir" --path /etc/hosts
+both_invalid contains "$tmp_dir/no-such.mir" "$tmp_dir/also-missing.mir"
+# With a valid context, the file is what fails.
+status=0
+"$cli" contains "$tmp_dir/no-such.mir" "$tmp_dir/child.mir" --workspace "$tmp_dir/ws" \
+  --format json --compact 2>"$tmp_dir/priority-file.json" >/dev/null || status=$?
+test "$status" = 1 || fail 'contains with a missing boundary file'
+grep -q '"code":"NOT_FOUND"' "$tmp_dir/priority-file.json" || fail 'missing file code'

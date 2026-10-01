@@ -411,7 +411,9 @@ static int command_capabilities(maelys_cli_context_t *context) {
                      "Trusted network mediator, for a mediated policy.")}
 
 /* The trusted host context the options describe. On failure it has replied
- * and returns NULL. */
+ * and returns NULL. Every command that resolves builds it before it reads a
+ * policy file, so an invalid option is reported before an invalid operand
+ * file whatever the command. */
 static maelys_sandbox_policy_host_t *host_context(maelys_cli_context_t *context) {
   maelys_sandbox_policy_host_t *host = NULL;
   char *error = NULL;
@@ -523,20 +525,21 @@ static int command_resolve(maelys_cli_context_t *context) {
   maelys_sandbox_policy_capabilities_t available = 0;
   if (declared_capabilities(context, &available))
     return MAELYS_CLI_EXIT_FAILURE;
-  maelys_mir_t *mir = NULL;
-  if (decode_policy(context, path, &mir) != MAELYS_CLI_EXIT_OK)
+  maelys_sandbox_policy_host_t *host = host_context(context);
+  if (!host)
     return MAELYS_CLI_EXIT_FAILURE;
+  maelys_mir_t *mir = NULL;
+  if (decode_policy(context, path, &mir) != MAELYS_CLI_EXIT_OK) {
+    maelys_sandbox_policy_host_destroy(host);
+    return MAELYS_CLI_EXIT_FAILURE;
+  }
   char digest[MAELYS_MIR_DIGEST_HEX_SIZE];
   char *error = NULL;
   maelys_mir_result_t result = maelys_mir_digest_hex(mir, digest, &error);
   if (result != MAELYS_MIR_OK) {
+    maelys_sandbox_policy_host_destroy(host);
     maelys_mir_destroy(mir);
     return fail_mir(context, result, error, path);
-  }
-  maelys_sandbox_policy_host_t *host = host_context(context);
-  if (!host) {
-    maelys_mir_destroy(mir);
-    return MAELYS_CLI_EXIT_FAILURE;
   }
   /* Resolve as if the backend offered everything: the report states what
    * the policy needs here, and judges a declared backend apart. */
