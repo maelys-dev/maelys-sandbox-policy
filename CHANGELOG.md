@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 — 2026-10-01
 
 - add the access `deny-write`: it removes writing from a path and grants
   nothing, so `write` on a tree with `deny-write` on a subtree leaves that
