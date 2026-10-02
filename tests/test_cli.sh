@@ -217,6 +217,8 @@ status=0
 test "$status" = 2 || fail "resolve of a precedence conflict exited $status, not 2"
 grep -q '"code":"MIR_CONFLICT"' "$tmp_dir/resolve-conflict.json" || fail 'conflict blocker'
 grep -q 'before=read after=read-write' "$tmp_dir/resolve-conflict.json" || fail 'conflict witness'
+grep -q 'replace the read rule by \[deny-write tree .*/ws/src\], which a backend applies only with the capability fs-deny-write' \
+  "$tmp_dir/resolve-conflict.json" || fail 'conflict remedy'
 status=0
 "$cli" resolve "$tmp_dir/policy.mir" --workspace "$tmp_dir/absent" --format json --compact \
   2>"$tmp_dir/resolve-badroot.json" >/dev/null || status=$?

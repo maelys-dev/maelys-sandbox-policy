@@ -474,6 +474,33 @@ static void describe_rule(const maelys_sandbox_policy_resolved_rule_t *rules,
                    rules[index].path);
 }
 
+/* What the author may write instead. A conflict has two shapes only: a
+ * read under a write, which contract 1 read as a read-only subtree, and a
+ * grant under a deny, which it read as reopening the denied tree. The rules
+ * were named just before, so the remedy names them by their access. */
+static void describe_remedy(const maelys_sandbox_policy_resolved_rule_t *rules,
+                            const maelys_plan_conflict_t *conflict, char *out,
+                            size_t size) {
+  const maelys_sandbox_policy_resolved_rule_t *legacy =
+      conflict->legacy_rule == SIZE_MAX ? NULL : &rules[conflict->legacy_rule];
+  if (legacy && conflict->after == MAELYS_SANDBOX_POLICY_PERMISSION_NONE)
+    (void)snprintf(out, size,
+                   "a deny is absolute and no grant reopens it: remove the %s "
+                   "rule, or narrow the deny rule so that it no longer covers "
+                   "that path",
+                   access_name(legacy->access));
+  else if (legacy && legacy->access == MAELYS_MIR_FS_READ)
+    (void)snprintf(
+        out, size,
+        "to keep it read-only, replace the read rule by [deny-write %s %s], "
+        "which a backend applies only with the capability fs-deny-write; to "
+        "let it be written, remove the read rule",
+        legacy->scope == MAELYS_MIR_SCOPE_TREE ? "tree" : "exact",
+        legacy->path);
+  else
+    (void)snprintf(out, size, "rewrite the policy so both agree");
+}
+
 maelys_mir_result_t
 maelys_sandbox_policy_plan_finalize(maelys_sandbox_policy_plan_t *plan,
                                     char **err) {
@@ -494,16 +521,18 @@ maelys_sandbox_policy_plan_finalize(maelys_sandbox_policy_plan_t *plan,
   maelys_mir_result_t result =
       maelys_plan_find_conflict(earlier, earlier_count, &conflict);
   if (result == MAELYS_MIR_ERR_CONFLICT) {
-    char legacy[4200], contract[4200];
+    char legacy[4200], contract[4200], remedy[4500];
     describe_rule(earlier, conflict.legacy_rule, legacy, sizeof(legacy));
     describe_rule(earlier, conflict.contract_rule, contract, sizeof(contract));
+    describe_remedy(earlier, &conflict, remedy, sizeof(remedy));
     maelys_set_error(
         err,
         "permission precedence conflict at %s: before=%s after=%s; "
         "most-specific-wins decided by [%s], deny-wins and additive grants "
-        "by [%s]; rewrite the policy so both agree",
+        "by [%s]; %s",
         conflict.witness, maelys_sandbox_policy_permission_name(conflict.before),
-        maelys_sandbox_policy_permission_name(conflict.after), legacy, contract);
+        maelys_sandbox_policy_permission_name(conflict.after), legacy, contract,
+        remedy);
   }
   free(conflict.witness);
   free(earlier);
