@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.1 — 2026-10-02
 
 - a policy refused for a precedence conflict is told what to write instead:
   a `read` under a `write` names the `deny-write` rule that keeps the subtree
