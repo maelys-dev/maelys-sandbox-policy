@@ -1,0 +1,6 @@
+# A MIR destination never names an IP literal, so a literal matches no
+# destination, even when it is where the name resolves.
+destination tcp api.example.com 443
+request tcp 93.184.216.34 443 sni=absent refused no-destination
+request tcp 127.0.0.1 443 sni=absent private refused no-destination
+compile accepted

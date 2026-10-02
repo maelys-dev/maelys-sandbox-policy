@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- the network destination contract (`docs/destination-contract.md`,
+  contract 1) says what a mediated policy allows for one request, for the
+  exact names MIR v3 carries and for the wildcard `*.suffix` it does not
+  carry yet: a request is allowed when at least one matching destination
+  admits it under its own flags, grants are additive and order never
+  matters; a wildcard covers every depth under a suffix of at least two
+  labels, never the suffix, never a private address, and a mediator that
+  applies one resolves at the request and proves three obligations. The
+  corpus `corpus/destinations` (version 1, nineteen cases) makes it
+  testable and is installed beside the permission corpus. No format, header
+  or ABI number changes: a wildcard is still refused at the source, and the
+  runner checks exactly that.
+
 ## 0.9.1 — 2026-10-02
 
 - a policy refused for a precedence conflict is told what to write instead:

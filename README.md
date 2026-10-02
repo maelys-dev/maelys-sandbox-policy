@@ -105,7 +105,9 @@ See [portable tooling](docs/portable-tooling.md) and the
 See the [architecture](docs/architecture.md),
 [C API contract](docs/api-contract.md), the normative
 [permission contract](docs/permission-contract.md) and its
-[corpus](corpus/permissions/README.md), [milestones](docs/milestones.md), the
+[corpus](corpus/permissions/README.md), the normative
+[destination contract](docs/destination-contract.md) and its
+[corpus](corpus/destinations/README.md), [milestones](docs/milestones.md), the
 normative [MIR v3 format](docs/mir-format-v3.md), and the published
 [source schema](schemas/mir-source-v3.schema.json). The external architectural
 influences are recorded in [design references](docs/references.md).
