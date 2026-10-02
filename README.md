@@ -110,6 +110,10 @@ normative [MIR v3 format](docs/mir-format-v3.md), and the published
 [source schema](schemas/mir-source-v3.schema.json). The external architectural
 influences are recorded in [design references](docs/references.md).
 
+Each release is authorized by a signed tag and carries checksums and
+provenance attestations: [release integrity](docs/release-integrity.md) says
+how to verify a downloaded archive.
+
 ## License
 
 Mozilla Public License 2.0 ([LICENSE](LICENSE)), like every Maelys repository.
