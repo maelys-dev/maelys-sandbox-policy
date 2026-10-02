@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- a policy refused for a precedence conflict is told what to write instead:
+  a `read` under a `write` names the `deny-write` rule that keeps the subtree
+  read-only, a grant under a `deny` names the grant to remove and the deny to
+  narrow. The diagnostic text changes; the result code, the witness and the
+  refusal do not;
+- `docs/naming.md` leaves the repository and the README links
+  `docs/release-integrity.md`; installed documentation carries one file
+  fewer.
+
 ## 0.9.0 — 2026-10-01
 
 - add the access `deny-write`: it removes writing from a path and grants

@@ -100,8 +100,18 @@ rule deciding each:
 ```text
 permission precedence conflict at /w/private/public: before=read after=none;
 most-specific-wins decided by [read tree /w/private/public], deny-wins and
-additive grants by [deny tree /w/private]; rewrite the policy so both agree
+additive grants by [deny tree /w/private]; a deny is absolute and no grant
+reopens it: remove the read rule, or narrow the deny rule so that it no
+longer covers that path
 ```
+
+A conflict has two shapes, and the diagnostic ends with what the author may
+write instead. A grant under a deny, as above: the grant goes, or the deny
+is narrowed. A `read` under a `write`, which contract 1 read as a read-only
+subtree: the `read` rule is replaced by a `deny-write` on the same path to
+keep that meaning, or removed to let the subtree be written. The diagnostic
+advises; it changes nothing, and the rewritten policy is a new artifact with
+its own digest.
 
 No rule is ever dropped or rewritten to make a policy pass. The comparison
 is exact: permissions are constant between rule paths, so checking every

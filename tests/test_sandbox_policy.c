@@ -244,7 +244,7 @@ static maelys_mir_t *two_rules(maelys_mir_fs_access_t first_access,
 
 static void expect_conflict(maelys_mir_t *m,
                             const maelys_sandbox_policy_host_t *h,
-                            const char *before_after) {
+                            const char *before_after, const char *remedy) {
   maelys_sandbox_policy_plan_t *p = NULL;
   char *e = NULL;
   CHECK(maelys_sandbox_policy_compile(m, h, all_caps, &p, &e) ==
@@ -252,6 +252,8 @@ static void expect_conflict(maelys_mir_t *m,
   CHECK(p == NULL);
   CHECK(e && strstr(e, "permission precedence conflict at /") != NULL);
   CHECK(e && strstr(e, before_after) != NULL);
+  CHECK(e && strstr(e, remedy) != NULL);
+  CHECK(e && strstr(e, "rewrite the policy so both agree") == NULL);
   maelys_mir_error_free(e);
   maelys_mir_destroy(m);
 }
@@ -278,23 +280,48 @@ static void test_permission_contract(void) {
   expect_conflict(two_rules(MAELYS_MIR_FS_DENY, MAELYS_MIR_ROOT_WORKSPACE,
                             "private", MAELYS_MIR_FS_READ,
                             MAELYS_MIR_ROOT_WORKSPACE, "private/public"),
-                  h, "before=read after=none");
+                  h, "before=read after=none",
+                  "a deny is absolute and no grant reopens it: remove the read rule,");
   expect_conflict(two_rules(MAELYS_MIR_FS_WRITE, MAELYS_MIR_ROOT_WORKSPACE, "",
                             MAELYS_MIR_FS_READ, MAELYS_MIR_ROOT_WORKSPACE,
                             "src"),
-                  h, "before=read after=read-write");
+                  h, "before=read after=read-write",
+                  "replace the read rule by [deny-write tree /");
+  /* The remedy the diagnostic names holds: with the read rule replaced by a
+   * deny-write, the plan is accepted and the subtree is read-only, as
+   * contract 1 read it. */
+  {
+    maelys_mir_t *m = two_rules(MAELYS_MIR_FS_WRITE, MAELYS_MIR_ROOT_WORKSPACE,
+                                "", MAELYS_MIR_FS_DENY_WRITE,
+                                MAELYS_MIR_ROOT_WORKSPACE, "src");
+    maelys_sandbox_policy_plan_t *p = NULL;
+    maelys_sandbox_policy_evaluation_t at;
+    char *resolved_src = realpath(src, NULL), *resolved_top = realpath(root, NULL);
+    CHECK(resolved_src != NULL && resolved_top != NULL);
+    CHECK_OK(maelys_sandbox_policy_compile(
+        m, h, all_caps | MAELYS_SANDBOX_POLICY_CAP_FS_DENY_WRITE, &p, &e));
+    CHECK_OK(maelys_sandbox_policy_plan_evaluate(p, resolved_src, &at, &e));
+    CHECK(at.permission == MAELYS_SANDBOX_POLICY_PERMISSION_READ);
+    CHECK_OK(maelys_sandbox_policy_plan_evaluate(p, resolved_top, &at, &e));
+    CHECK(at.permission == MAELYS_SANDBOX_POLICY_PERMISSION_READ_WRITE);
+    free(resolved_src);
+    free(resolved_top);
+    maelys_sandbox_policy_plan_destroy(p);
+    maelys_mir_destroy(m);
+  }
   /* The overlap may only show once roots are resolved: the temp root lies
    * inside the denied tree of the workspace. */
   expect_conflict(two_rules(MAELYS_MIR_FS_DENY, MAELYS_MIR_ROOT_WORKSPACE,
                             "private", MAELYS_MIR_FS_WRITE, MAELYS_MIR_ROOT_TEMP,
                             ""),
-                  h, "before=read-write after=none");
+                  h, "before=read-write after=none",
+                  "remove the write rule, or narrow the deny rule");
   /* ...or once a link is resolved: the host rule names an alias of it. */
   CHECK(symlink(public_dir, link) == 0);
   expect_conflict(two_rules(MAELYS_MIR_FS_DENY, MAELYS_MIR_ROOT_WORKSPACE,
                             "private", MAELYS_MIR_FS_READ, MAELYS_MIR_ROOT_HOST,
                             link),
-                  h, "before=read after=none");
+                  h, "before=read after=none", "remove the read rule, or narrow");
 
   /* An accepted plan: grants first, denies last, evaluated by the contract.
    * The ephemeral-write root grants nothing by itself. */
