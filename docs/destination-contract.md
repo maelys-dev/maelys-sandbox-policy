@@ -20,10 +20,13 @@ starting or ending with a hyphen, letters in lower case, no trailing dot.
 It is what a MIR destination carries, and what every comparison of this
 contract is made on.
 
-- An IPv4 literal has the form of a canonical name whose labels are all
-  digits; an IPv6 literal has no canonical form. A MIR destination never
-  names a literal, so a request for one matches no exact destination, and
-  no wildcard either: the last label of a suffix contains a letter.
+- An IPv4 literal, `93.184.216.34`, has the form of a canonical name, and
+  an exact destination may name one: the builder accepts it, and so does a
+  mediator. The contract compares it as the string it is and does not
+  define what a valid address is; connecting to it is connecting to that
+  address, and the private-address rule applies to it like to any name. An
+  IPv6 literal has no canonical form. No wildcard covers a literal: the
+  last label of a suffix contains a letter.
 - Internationalized names are compared as the ASCII they are written in:
   an `xn--` label is a label like any other, neither decoded nor validated.
 - A request whose name has no canonical form is refused; whether a mediator
@@ -71,7 +74,7 @@ A matching destination **admits** the request when both hold:
 | Mode | Verdict |
 |---|---|
 | `none` | every request is refused |
-| `direct` | every request is allowed; the mediator is not involved |
+| `direct` | every request is allowed, well formed or not: no mediator judges it |
 | `mediated` | allowed when **at least one** matching destination admits it; refused otherwise |
 
 Grants are additive, as for filesystem permissions: adding a destination
@@ -92,7 +95,7 @@ request itself; the others are judged destination by destination:
 | Reason | When |
 |---|---|
 | `network-none` | the mode is `none` |
-| `malformed-name` | the request name has no canonical form |
+| `malformed-name` | the request name has no canonical form, in `mediated` mode |
 | `no-destination` | no destination matches |
 | `sni-absent` | a matching destination requires a server name and none was presented |
 | `sni-mismatch` | a matching destination requires a server name and the one presented differs from the request name |

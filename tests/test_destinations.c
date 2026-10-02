@@ -122,10 +122,10 @@ static reason_t evaluate(maelys_mir_network_mode_t mode,
                          const request_t *r) {
   if (mode == MAELYS_MIR_NETWORK_NONE)
     return NETWORK_NONE;
-  if (!canonical_name(r->name))
-    return MALFORMED_NAME;
   if (mode == MAELYS_MIR_NETWORK_DIRECT)
     return ALLOWED;
+  if (!canonical_name(r->name))
+    return MALFORMED_NAME;
   reason_t worst = NO_DESTINATION;
   for (size_t i = 0; i < count; ++i) {
     if (!matches(&destinations[i], r))
@@ -204,7 +204,8 @@ static void run_case(const char *file) {
     char a[NAME_BYTES], c[NAME_BYTES];
     unsigned port;
     int consumed = 0;
-    if (sscanf(line, "network %255s", a) == 1) {
+    if (sscanf(line, "network %255s%n", a, &consumed) == 1 &&
+        line[consumed] == '\0') {
       if (seen_network++ || destination_count || request_count)
         FAIL_CASE("network must come once, first");
       if (strcmp(a, "none") == 0)
@@ -242,7 +243,8 @@ static void run_case(const char *file) {
       for (size_t i = 0; i + 1 < destination_count; ++i)
         if (strcmp(destinations[i].name, a) == 0 && destinations[i].port == port)
           FAIL_CASE("destination named twice: %s %u", a, port);
-    } else if (sscanf(line, "requires %255s", a) == 1) {
+    } else if (sscanf(line, "requires %255s%n", a, &consumed) == 1 &&
+               line[consumed] == '\0') {
       if (strcmp(a, "network-host-wildcard") != 0)
         FAIL_CASE("unknown capability %s", a);
       requires_wildcard = 1;
@@ -256,8 +258,14 @@ static void run_case(const char *file) {
       strcpy(copy, line);
       char *words[8];
       size_t n = 0;
-      for (char *w = strtok(copy, " "); w && n < 8u; w = strtok(NULL, " "))
+      for (char *w = strtok(copy, " "); w; w = strtok(NULL, " ")) {
+        if (n == 8u) {
+          FAIL_CASE("request line has too many words");
+          n = 0;
+          break;
+        }
         words[n++] = w;
+      }
       request_t *req = &requests[request_count++];
       memset(req, 0, sizeof(*req));
       size_t k = 1;
@@ -291,7 +299,8 @@ static void run_case(const char *file) {
       }
       if (req->sni[0] && !canonical_name(req->sni))
         FAIL_CASE("server name is not canonical: %s", req->sni);
-    } else if (sscanf(line, "compile %255s", a) == 1) {
+    } else if (sscanf(line, "compile %255s%n", a, &consumed) == 1 &&
+               line[consumed] == '\0') {
       seen_compile = 1;
       if (strcmp(a, "accepted") == 0)
         accepted = 1;

@@ -15,7 +15,9 @@ matches it (protocol, port, name equal or under a `*.suffix` wildcard) and
 admits it under its own flags: `requireTlsSni` demands one DNS server name
 equal to the request name, and a private address demands
 `allowPrivateAddresses`. Grants are additive and order never matters. `none`
-refuses everything; `direct` allows everything and involves no mediator.
+refuses everything; `direct` allows everything, well formed or not, since no
+mediator judges it. An IPv4 literal is a name like any other: an exact
+destination may name one, a wildcard never covers one.
 
 ## Case format
 
