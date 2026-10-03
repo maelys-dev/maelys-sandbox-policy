@@ -79,6 +79,22 @@ static int canonical_name(const char *name) {
 }
 
 /* Anything with a star is meant as a wildcard; only `*.suffix` is one. */
+/* A port as the corpus writes it: decimal digits only, 1 to 65535. */
+static int parse_port(const char *text, unsigned *out) {
+  unsigned value = 0;
+  if (*text == '\0' || strlen(text) > 5u)
+    return 0;
+  for (; *text; ++text) {
+    if (*text < '0' || *text > '9')
+      return 0;
+    value = value * 10u + (unsigned)(*text - '0');
+  }
+  if (value == 0 || value > 65535u)
+    return 0;
+  *out = value;
+  return 1;
+}
+
 static int is_wildcard(const char *name) { return strchr(name, '*') != NULL; }
 
 /* `*.suffix`, suffix canonical with at least two labels, the last one
@@ -214,8 +230,12 @@ static void run_case(const char *file) {
         mode = MAELYS_MIR_NETWORK_DIRECT;
       else if (strcmp(a, "mediated") != 0)
         FAIL_CASE("unknown network mode %s", a);
-    } else if (sscanf(line, "destination tcp %255s %u%n", a, &port,
+    } else if (sscanf(line, "destination tcp %255s %255s%n", a, c,
                       &consumed) == 2) {
+      if (!parse_port(c, &port)) {
+        FAIL_CASE("port must be 1 to 65535: %s", c);
+        continue;
+      }
       if (mode != MAELYS_MIR_NETWORK_MEDIATED)
         FAIL_CASE("a destination outside mediated mode");
       if (destination_count == MAX_DESTINATIONS) {
@@ -226,8 +246,6 @@ static void run_case(const char *file) {
       memset(dest, 0, sizeof(*dest));
       strcpy(dest->name, a);
       dest->port = port;
-      if (port == 0 || port > 65535u)
-        FAIL_CASE("port out of range");
       const char *rest = line + consumed;
       while (sscanf(rest, " %255s%n", c, &consumed) == 1) {
         rest += consumed;
@@ -271,7 +289,7 @@ static void run_case(const char *file) {
       size_t k = 1;
       if (n < 5u || strcmp(words[k++], "tcp") != 0 ||
           strlen(words[k]) >= NAME_BYTES ||
-          sscanf(words[k + 1], "%u", &port) != 1 ||
+          !parse_port(words[k + 1], &port) ||
           strncmp(words[k + 2], "sni=", 4u) != 0 ||
           strlen(words[k + 2] + 4) >= NAME_BYTES) {
         FAIL_CASE("malformed request line");
