@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 — 2026-10-03
 
 - the network destination contract (`docs/destination-contract.md`,
   contract 1) says what a mediated policy allows for one request, for the

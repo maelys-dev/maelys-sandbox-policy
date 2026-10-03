@@ -1,4 +1,4 @@
-# Milestones implemented through 0.9.1
+# Milestones implemented through 0.10.0
 
 ## MIR track
 
@@ -47,6 +47,11 @@
 - **S6 — Difference and overlap:** what changes between two resolved plans,
   their equivalence, and whether both grant a common access; execution
   constraints compared under a contract of their own.
+- **S7 — Destination contract:** what a mediated policy allows for one
+  request, additive over the matching destinations, stated for the exact
+  names of MIR v3 and for the `*.suffix` wildcard ahead of its encoding; a
+  corpus a mediator plays, and a host grammar that reads a numeric literal
+  the same on every host.
 
 Backends and process launch do not belong to this repository. Maelys Warden
 consumes `SandboxPlan` through an adapter and owns Seatbelt/Bubblewrap
