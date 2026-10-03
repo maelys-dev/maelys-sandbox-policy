@@ -366,7 +366,8 @@ static void run_case(const char *file) {
   int has_wildcard = 0, well_formed = 1, disguised = 0;
   for (size_t i = 0; i < destination_count; ++i) {
     if (!is_wildcard(destinations[i].name)) {
-      if (!canonical_name(destinations[i].name)) {
+      if (!canonical_name(destinations[i].name) ||
+          (destinations[i].require_sni && strict_ipv4(destinations[i].name))) {
         well_formed = 0;
         disguised = 1;
       }

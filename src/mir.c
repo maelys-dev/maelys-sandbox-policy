@@ -308,6 +308,15 @@ maelys_mir_result_t maelys_mir_builder_add_network_destination_ex(
     maelys_set_error(err, "invalid mediated network destination");
     return MAELYS_MIR_ERR_ARGUMENT;
   }
+  /* RFC 6066 admits no literal in a TLS server name: requiring one for an
+   * address closes the destination. A merge of a repeated target could not
+   * create this, since the literal is the same on both entries. */
+  if ((flags & MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI) &&
+      strict_ipv4(host)) {
+    maelys_set_error(err, "a TLS server name cannot be required of an IPv4 "
+                          "literal destination");
+    return MAELYS_MIR_ERR_ARGUMENT;
+  }
   char *canonical = canonical_dns_host(host);
   if (!canonical)
     return MAELYS_MIR_ERR_MEMORY;

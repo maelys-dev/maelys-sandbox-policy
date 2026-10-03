@@ -51,7 +51,8 @@ compile <accepted|refused>
 - `compile accepted`: the policy is well formed under the contract.
 - `compile refused`: the policy is refused at the source, before any
   request: an exact name whose last label is numeric without being a strict
-  IPv4 literal, a wildcard whose suffix has fewer than two labels or whose
+  IPv4 literal, an IPv4 literal carrying `require-tls-sni` (RFC 6066 admits
+  no literal in a server name), a wildcard whose suffix has fewer than two labels or whose
   last label is numeric, a wildcard written in any other form than
   `*.suffix`, or a wildcard carrying `allow-private-addresses`. A refused case has no `request` line.
 

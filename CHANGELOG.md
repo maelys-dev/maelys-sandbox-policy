@@ -10,7 +10,7 @@
   matters; a wildcard covers every depth under a suffix of at least two
   labels, never the suffix, never a private address, and a mediator that
   applies one resolves at the request and proves three obligations. The
-  corpus `corpus/destinations` (version 1, twenty-eight cases) makes it
+  corpus `corpus/destinations` (version 1, twenty-nine cases) makes it
   testable and is installed beside the permission corpus. No header or ABI
   number changes: a wildcard is still refused at the source, and the runner
   checks exactly that;
@@ -22,7 +22,11 @@
   TypeScript verifier and the source schema apply the same grammar, with no
   resolver consulted. A MIR artifact written earlier that names such a host
   is now rejected by `maelys_mir_decode`; no valid artifact changes a byte
-  or a digest.
+  or a digest. For the same reason an IPv4 literal destination no longer
+  carries `requireTlsSni`: RFC 6066 admits no literal in a TLS server name,
+  and the flag closed the destination. The builder, the decoder, the
+  verifier and the schema refuse it; maelys-egress 0.28.0 applies the same
+  grammar.
 
 ## 0.9.1 — 2026-10-02
 

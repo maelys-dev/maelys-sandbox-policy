@@ -41,6 +41,12 @@ for (const disguised of ["registry.0x7f0001", "registry.00000001"]) {
   await assert.rejects(() => verifyMirV3Digest(tampered), /non-canonical host/);
 }
 
+// A TLS server name is never required of a literal (RFC 6066): these bytes
+// are the C encoder's for 127.0.0.1 with allowPrivateAddresses, the flags
+// byte then set to requireTlsSni too; tests/test_mir.c holds the same hex.
+const literalSni = Uint8Array.from(Buffer.from("4d4d495200030000000000000301010000000001020101bb030000093132372e302e302e31", "hex"));
+await assert.rejects(() => verifyMirV3Digest(literalSni), /TLS server name required of a literal/);
+
 const denyWrite = new Uint8Array(await readFile(path.join(vectorRoot, "deny-write.mir")));
 const { policy: denyWritePolicy } = await verifyMirV3Digest(denyWrite);
 assert.deepEqual(denyWritePolicy.filesystem.rules.map((rule) =>

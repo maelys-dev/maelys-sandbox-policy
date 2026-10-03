@@ -558,6 +558,8 @@ static void test_restrictive_overlay(void) {
 
 /* A name whose last label reads as a number is a literal in disguise: only
  * the strict dotted IPv4 is accepted, by the builder and by the decoder. */
+#define LITERAL_SNI_HEX "4d4d495200030000000000000301010000000001020101bb030000093132372e302e302e31"
+
 static void test_numeric_hosts(void) {
   static const char *const accepted[] = {
       "93.184.216.34", "0.0.0.0", "255.255.255.255", "1.example.com",
@@ -617,6 +619,47 @@ static void test_numeric_hosts(void) {
     CHECK(e != NULL && strstr(e, "invalid host") != NULL);
     maelys_mir_error_free(e);
   }
+  /* A TLS server name is never required of a literal (RFC 6066): the
+   * builder refuses it, and so does the decoder on bytes that carry it. */
+  {
+    maelys_mir_builder_t *b = NULL;
+    char *e = NULL;
+    CHECK_OK(maelys_mir_builder_create(&b, &e));
+    CHECK(maelys_mir_builder_add_network_destination_ex(
+              b, MAELYS_MIR_NETWORK_PROTOCOL_TCP, "127.0.0.1", 443u,
+              MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI,
+              &e) == MAELYS_MIR_ERR_ARGUMENT);
+    maelys_mir_error_free(e);
+    e = NULL;
+    CHECK_OK(maelys_mir_builder_add_network_destination_ex(
+        b, MAELYS_MIR_NETWORK_PROTOCOL_TCP, "127.0.0.1", 443u,
+        MAELYS_MIR_NETWORK_DESTINATION_ALLOW_PRIVATE_ADDRESSES, &e));
+    CHECK_OK(maelys_mir_builder_set_network(b, MAELYS_MIR_NETWORK_MEDIATED,
+                                            &e));
+    maelys_mir_t *literal = NULL;
+    CHECK_OK(maelys_mir_builder_build(b, &literal, &e));
+    maelys_mir_builder_destroy(b);
+    uint8_t *encoded = NULL;
+    size_t encoded_size = 0;
+    CHECK_OK(maelys_mir_encode(literal, &encoded, &encoded_size, &e));
+    maelys_mir_destroy(literal);
+    /* The only record follows the header; its flags byte is at +4. */
+    CHECK(encoded_size == 20u + 8u + 9u && encoded[20 + 4] == 0x02u);
+    encoded[20 + 4] = 0x03u;
+    maelys_mir_t *rejected = NULL;
+    CHECK(maelys_mir_decode(encoded, encoded_size, &rejected, &e) ==
+          MAELYS_MIR_ERR_ARGUMENT);
+    CHECK(rejected == NULL);
+    maelys_mir_error_free(e);
+    e = NULL;
+    char hex[2 * 64 + 1];
+    for (size_t i = 0; i < encoded_size; ++i)
+      snprintf(hex + 2 * i, 3u, "%02x", encoded[i]);
+    /* The TypeScript verifier holds the same bytes in its test. */
+    CHECK(strcmp(hex, LITERAL_SNI_HEX) == 0);
+    free(encoded);
+  }
+
   /* The vector itself still decodes: the rule changed no valid artifact. */
   maelys_mir_t *decoded = NULL;
   char *e = NULL;

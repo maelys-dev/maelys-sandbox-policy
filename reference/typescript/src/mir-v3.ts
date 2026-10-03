@@ -195,6 +195,9 @@ export function verifyMirV3(input: Uint8Array): VerifiedMirV3 {
     let host: string;
     try { host = decoder.decode(hostBytes); } catch { fail(`network UTF-8 ${index}`); }
     if (!validDnsHost(host)) fail(`non-canonical host ${index}`);
+    // RFC 6066 admits no literal in a TLS server name.
+    if ((flags & REQUIRE_TLS_SNI) !== 0 && strictIpv4(host))
+      fail(`TLS server name required of a literal ${index}`);
     const destination: ParsedDestination = { protocol: "tcp", host, port, hostBytes };
     if (flags & REQUIRE_TLS_SNI) destination.requireTlsSni = true;
     if (flags & ALLOW_PRIVATE_ADDRESSES) destination.allowPrivateAddresses = true;

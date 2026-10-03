@@ -39,6 +39,10 @@ contract is made on.
   which no top-level domain uses; that restriction is deliberate.
 - No wildcard covers a literal: the last label of a suffix is never
   numeric.
+- A destination naming an IPv4 literal never carries `requireTlsSni`: RFC
+  6066 admits no literal in a TLS server name, so a conforming client would
+  never present one and the flag would close the destination. Such a
+  destination is refused at the source.
 - Internationalized names are compared as the ASCII they are written in:
   an `xn--` label is a label like any other, neither decoded nor validated.
 - A request whose name has no canonical form is refused; whether a mediator
