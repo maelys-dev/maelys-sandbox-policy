@@ -42,6 +42,52 @@ static int valid_root_mode(maelys_mir_root_mode_t v) {
          v == MAELYS_MIR_ROOT_EPHEMERAL_WRITE;
 }
 
+/* A label a resolver may read as a number: decimal digits, or 0x and hex
+ * digits in either case. Case is judged before canonicalization lowers it. */
+static int numeric_label(const char *label, size_t n) {
+  size_t i = 0;
+  if (n > 2u && label[0] == '0' && (label[1] == 'x' || label[1] == 'X')) {
+    for (i = 2; i < n; ++i) {
+      char c = label[i];
+      if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+            (c >= 'A' && c <= 'F')))
+        return 0;
+    }
+    return 1;
+  }
+  for (i = 0; i < n; ++i)
+    if (label[i] < '0' || label[i] > '9')
+      return 0;
+  return n > 0;
+}
+
+/* Exactly four decimal octets, 0..255, no leading zero but "0" itself. */
+static int strict_ipv4(const char *host) {
+  int octets = 0;
+  const char *p = host;
+  while (1) {
+    size_t n = 0;
+    unsigned value = 0;
+    while (p[n] >= '0' && p[n] <= '9') {
+      value = value * 10u + (unsigned)(p[n] - '0');
+      ++n;
+    }
+    if (n == 0 || n > 3u || (n > 1u && p[0] == '0') || value > 255u)
+      return 0;
+    ++octets;
+    p += n;
+    if (*p == '\0')
+      return octets == 4;
+    if (*p != '.' || octets == 4)
+      return 0;
+    ++p;
+  }
+}
+
+/* A hostname, or a strict IPv4 literal. A name whose last label a resolver
+ * may read as a number is a literal in disguise, read differently from one
+ * host to the next (127.1, 2130706433, 0x7f.1, 010.0.0.1): only the strict
+ * dotted form is accepted, so that a destination names one address. */
 static int valid_dns_host(const char *host) {
   if (!host)
     return 0;
@@ -65,7 +111,11 @@ static int valid_dns_host(const char *host) {
       return 0;
     ++label_length;
   }
-  return label_length > 0 && label_length <= 63u && host[length - 1u] != '-';
+  if (!(label_length > 0 && label_length <= 63u && host[length - 1u] != '-'))
+    return 0;
+  if (numeric_label(host + length - label_length, label_length))
+    return strict_ipv4(host);
+  return 1;
 }
 
 static char *canonical_dns_host(const char *host) {
@@ -256,6 +306,15 @@ maelys_mir_result_t maelys_mir_builder_add_network_destination_ex(
   if (!b || !valid_network_protocol(protocol) || port == 0 ||
       !valid_dns_host(host) || !valid_destination_flags(flags)) {
     maelys_set_error(err, "invalid mediated network destination");
+    return MAELYS_MIR_ERR_ARGUMENT;
+  }
+  /* RFC 6066 admits no literal in a TLS server name: requiring one for an
+   * address closes the destination. A merge of a repeated target could not
+   * create this, since the literal is the same on both entries. */
+  if ((flags & MAELYS_MIR_NETWORK_DESTINATION_REQUIRE_TLS_SNI) &&
+      strict_ipv4(host)) {
+    maelys_set_error(err, "a TLS server name cannot be required of an IPv4 "
+                          "literal destination");
     return MAELYS_MIR_ERR_ARGUMENT;
   }
   char *canonical = canonical_dns_host(host);

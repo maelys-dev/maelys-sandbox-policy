@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+- the network destination contract (`docs/destination-contract.md`,
+  contract 1) says what a mediated policy allows for one request, for the
+  exact names MIR v3 carries and for the wildcard `*.suffix` it does not
+  carry yet: a request is allowed when at least one matching destination
+  admits it under its own flags, grants are additive and order never
+  matters; a wildcard covers every depth under a suffix of at least two
+  labels, never the suffix, never a private address, and a mediator that
+  applies one resolves at the request and proves three obligations. The
+  corpus `corpus/destinations` (version 1, twenty-nine cases) makes it
+  testable and is installed beside the permission corpus. No header or ABI
+  number changes: a wildcard is still refused at the source, and the runner
+  checks exactly that;
+- **a host whose last label reads as a number is rejected unless it is a
+  strict IPv4 literal.** `127.1`, `2130706433`, `0x7f.1`, `0x7f000001` and
+  `010.0.0.1` were accepted as hostnames and left to the resolver, which
+  reads them as addresses, `010.0.0.1` as 10.0.0.1 on macOS and 8.0.0.1 on
+  Linux; `93.184.216.34` stays accepted. The builder, the decoder, the
+  TypeScript verifier and the source schema apply the same grammar, with no
+  resolver consulted. A MIR artifact written earlier that names such a host
+  is now rejected by `maelys_mir_decode`; no valid artifact changes a byte
+  or a digest. For the same reason an IPv4 literal destination no longer
+  carries `requireTlsSni`: RFC 6066 admits no literal in a TLS server name,
+  and the flag closed the destination. The builder, the decoder, the
+  verifier and the schema refuse it; maelys-egress 0.28.0 applies the same
+  grammar.
+
 ## 0.9.1 — 2026-10-02
 
 - a policy refused for a precedence conflict is told what to write instead:

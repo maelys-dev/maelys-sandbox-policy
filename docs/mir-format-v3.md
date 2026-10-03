@@ -59,7 +59,15 @@ Every network record has an 8-byte prefix followed by `host_length` ASCII bytes.
 | 4 | 1 | destination flags, see below; unknown bits are rejected |
 | 5 | 1 | reserved, exactly zero |
 | 6 | 2 | hostname length, `1..253` |
-| 8 | N | canonical lowercase DNS hostname |
+| 8 | N | canonical lowercase DNS hostname, or a strict IPv4 literal |
+
+A hostname whose last label a resolver may read as a number — decimal
+digits, or `0x` and hexadecimal digits — is rejected unless the whole name
+is a strict IPv4 literal: four decimal octets, 0 to 255, no leading zero.
+`127.1`, `0x7f000001` and `010.0.0.1` are not valid hosts; `93.184.216.34`
+is. The rule is the destination contract's (`docs/destination-contract.md`);
+an artifact written before it that names such a host is rejected by this
+decoder, and no valid artifact changes a byte.
 
 Destination flags:
 
