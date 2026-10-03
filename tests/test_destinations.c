@@ -137,7 +137,8 @@ static int is_wildcard(const char *name) { return strchr(name, '*') != NULL; }
 /* `*.suffix`, suffix canonical with at least two labels, the last one not
  * numeric, so that no literal lies under a wildcard. */
 static int well_formed_wildcard(const char *name) {
-  if (strncmp(name, "*.", 2u) != 0 || !canonical_name(name + 2))
+  if (strlen(name) > 253u || strncmp(name, "*.", 2u) != 0 ||
+      !canonical_name(name + 2))
     return 0;
   const char *last = strrchr(name + 2, '.');
   return last != NULL && !numeric_label(last + 1, strlen(last + 1));

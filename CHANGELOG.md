@@ -10,7 +10,7 @@
   matters; a wildcard covers every depth under a suffix of at least two
   labels, never the suffix, never a private address, and a mediator that
   applies one resolves at the request and proves three obligations. The
-  corpus `corpus/destinations` (version 1, twenty-five cases) makes it
+  corpus `corpus/destinations` (version 1, twenty-eight cases) makes it
   testable and is installed beside the permission corpus. No header or ABI
   number changes: a wildcard is still refused at the source, and the runner
   checks exactly that;
