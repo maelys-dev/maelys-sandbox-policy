@@ -556,6 +556,74 @@ static void test_restrictive_overlay(void) {
   maelys_mir_builder_destroy(b);
 }
 
+/* A name whose last label reads as a number is a literal in disguise: only
+ * the strict dotted IPv4 is accepted, by the builder and by the decoder. */
+static void test_numeric_hosts(void) {
+  static const char *const accepted[] = {
+      "93.184.216.34", "0.0.0.0", "255.255.255.255", "1.example.com",
+      "0xdead.example.com", "x0.example.com", "localhost",
+  };
+  static const char *const refused[] = {
+      "127.1",    "2130706433", "0x7f.1",    "010.0.0.1",   "999.1.1.1",
+      "0x7f000001", "0x7f.0x1", "0177.0x1", "0X7F.1",     "1.2.3.04",
+      "256.1.1.1",  "a.0xdead", "example.0x1", "1.2.3",  "1.2.3.4.5",
+  };
+  for (size_t i = 0; i < sizeof(accepted) / sizeof(*accepted); ++i) {
+    maelys_mir_builder_t *b = NULL;
+    char *e = NULL;
+    CHECK_OK(maelys_mir_builder_create(&b, &e));
+    CHECK(maelys_mir_builder_add_network_destination(
+              b, MAELYS_MIR_NETWORK_PROTOCOL_TCP, accepted[i], 443u, &e) ==
+          MAELYS_MIR_OK);
+    maelys_mir_error_free(e);
+    maelys_mir_builder_destroy(b);
+  }
+  for (size_t i = 0; i < sizeof(refused) / sizeof(*refused); ++i) {
+    maelys_mir_builder_t *b = NULL;
+    char *e = NULL;
+    CHECK_OK(maelys_mir_builder_create(&b, &e));
+    if (maelys_mir_builder_add_network_destination(
+            b, MAELYS_MIR_NETWORK_PROTOCOL_TCP, refused[i], 443u, &e) !=
+        MAELYS_MIR_ERR_ARGUMENT) {
+      fprintf(stderr, "FAIL: builder accepted %s\n", refused[i]);
+      ++failures;
+    }
+    maelys_mir_error_free(e);
+    maelys_mir_builder_destroy(b);
+  }
+
+  /* Bytes a 0.9.1 encoder could have written: the last host of the
+   * mediated-flags vector, registry.internal, replaced by a name of the same
+   * length that keeps the record order. The decoder refuses them now. */
+  FILE *f = fopen("tests/vectors/mediated-flags.mir", "rb");
+  CHECK(f != NULL);
+  if (!f)
+    return;
+  uint8_t bytes[4096];
+  size_t size = fread(bytes, 1u, sizeof(bytes), f);
+  fclose(f);
+  CHECK(size == 0x7au && memcmp(bytes + 0x69, "registry.internal", 17u) == 0);
+  static const char *const disguised[] = {"registry.0x7f0001",
+                                          "registry.00000001"};
+  for (size_t i = 0; i < 2u; ++i) {
+    uint8_t tampered[4096];
+    memcpy(tampered, bytes, size);
+    memcpy(tampered + 0x69, disguised[i], 17u);
+    maelys_mir_t *decoded = NULL;
+    char *e = NULL;
+    CHECK(maelys_mir_decode(tampered, size, &decoded, &e) ==
+          MAELYS_MIR_ERR_FORMAT);
+    CHECK(decoded == NULL);
+    CHECK(e != NULL && strstr(e, "invalid host") != NULL);
+    maelys_mir_error_free(e);
+  }
+  /* The vector itself still decodes: the rule changed no valid artifact. */
+  maelys_mir_t *decoded = NULL;
+  char *e = NULL;
+  CHECK_OK(maelys_mir_decode(bytes, size, &decoded, &e));
+  maelys_mir_destroy(decoded);
+}
+
 int main(void) {
   test_determinism();
   test_precedence();
@@ -567,6 +635,7 @@ int main(void) {
   test_artifact_digest();
   test_noncanonical();
   test_restrictive_overlay();
+  test_numeric_hosts();
   if (failures)
     fprintf(stderr, "%d MIR test failures\n", failures);
   return failures ? 1 : 0;

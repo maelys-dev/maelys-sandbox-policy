@@ -32,6 +32,15 @@ for (const [offset, value] of [[0x33 + 4, 0x04], [0x33 + 5, 0x01]]) {
   await assert.rejects(() => verifyMirV3Digest(tampered), /invalid canonical MIR v3/);
 }
 
+// A last label that reads as a number is a literal in disguise: bytes an
+// earlier encoder could have written for registry.0x7f0001 or
+// registry.00000001 (same length, same order) are refused.
+for (const disguised of ["registry.0x7f0001", "registry.00000001"]) {
+  const tampered = flagged.slice();
+  tampered.set(new TextEncoder().encode(disguised), 0x69);
+  await assert.rejects(() => verifyMirV3Digest(tampered), /non-canonical host/);
+}
+
 const denyWrite = new Uint8Array(await readFile(path.join(vectorRoot, "deny-write.mir")));
 const { policy: denyWritePolicy } = await verifyMirV3Digest(denyWrite);
 assert.deepEqual(denyWritePolicy.filesystem.rules.map((rule) =>

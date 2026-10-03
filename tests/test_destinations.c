@@ -54,6 +54,39 @@ typedef struct request {
   reason_t verdict;
 } request_t;
 
+/* A label a resolver may read as a number, judged before the case is
+ * lowered; and the strict dotted IPv4 the contract accepts instead. */
+static int numeric_label(const char *label, size_t n) {
+  if (n > 2u && label[0] == '0' && (label[1] == 'x' || label[1] == 'X')) {
+    for (size_t i = 2; i < n; ++i)
+      if (!strchr("0123456789abcdefABCDEF", label[i]))
+        return 0;
+    return 1;
+  }
+  for (size_t i = 0; i < n; ++i)
+    if (label[i] < '0' || label[i] > '9')
+      return 0;
+  return n > 0;
+}
+
+static int strict_ipv4(const char *name) {
+  int octets = 0;
+  for (const char *p = name;; ++p) {
+    size_t n = 0;
+    unsigned value = 0;
+    for (; p[n] >= '0' && p[n] <= '9'; ++n)
+      value = value * 10u + (unsigned)(p[n] - '0');
+    if (n == 0 || n > 3u || (n > 1u && p[0] == '0') || value > 255u)
+      return 0;
+    ++octets;
+    p += n;
+    if (*p == '\0')
+      return octets == 4;
+    if (*p != '.' || octets == 4)
+      return 0;
+  }
+}
+
 /* A canonical name as the contract defines it: the mediators agree on this
  * grammar, and the builder has the same one. */
 static int canonical_name(const char *name) {
@@ -75,7 +108,11 @@ static int canonical_name(const char *name) {
     if (++label > 63u)
       return 0;
   }
-  return label > 0 && name[length - 1u] != '-';
+  if (!(label > 0 && name[length - 1u] != '-'))
+    return 0;
+  if (numeric_label(name + length - label, label))
+    return strict_ipv4(name);
+  return 1;
 }
 
 /* Anything with a star is meant as a wildcard; only `*.suffix` is one. */
@@ -97,18 +134,13 @@ static int parse_port(const char *text, unsigned *out) {
 
 static int is_wildcard(const char *name) { return strchr(name, '*') != NULL; }
 
-/* `*.suffix`, suffix canonical with at least two labels, the last one
- * holding a letter so that no IPv4 literal lies under a wildcard. */
+/* `*.suffix`, suffix canonical with at least two labels, the last one not
+ * numeric, so that no literal lies under a wildcard. */
 static int well_formed_wildcard(const char *name) {
   if (strncmp(name, "*.", 2u) != 0 || !canonical_name(name + 2))
     return 0;
   const char *last = strrchr(name + 2, '.');
-  if (!last)
-    return 0;
-  for (++last; *last; ++last)
-    if (*last >= 'a' && *last <= 'z')
-      return 1;
-  return 0;
+  return last != NULL && !numeric_label(last + 1, strlen(last + 1));
 }
 
 static int matches(const destination_t *d, const request_t *r) {
@@ -164,12 +196,13 @@ static int parse_reason(const char *text, reason_t *out) {
   return 0;
 }
 
-/* The builder refuses every wildcard today; the corpus says so with
- * `requires`, and the format change is what turns those cases on. */
+/* The builder refuses every wildcard today, and every literal in disguise
+ * for good; the corpus says the former with `requires`, and the format
+ * change is what turns those cases on. */
 static void check_builder(const char *file, size_t line_number,
                           maelys_mir_network_mode_t mode,
                           const destination_t *destinations, size_t count,
-                          int has_wildcard, int accepted) {
+                          int refused_at_source, int accepted) {
   maelys_mir_builder_t *b = NULL;
   char *e = NULL;
   if (maelys_mir_builder_create(&b, &e) != MAELYS_MIR_OK) {
@@ -188,13 +221,13 @@ static void check_builder(const char *file, size_t line_number,
         b, MAELYS_MIR_NETWORK_PROTOCOL_TCP, destinations[i].name,
         (uint16_t)destinations[i].port, flags, &e);
   }
-  if (has_wildcard && r == MAELYS_MIR_OK)
-    FAIL_CASE("the builder accepted a wildcard the format does not carry");
-  if (!has_wildcard && r != MAELYS_MIR_OK)
+  if (refused_at_source && r == MAELYS_MIR_OK)
+    FAIL_CASE("the builder accepted a destination the contract refuses");
+  if (!refused_at_source && r != MAELYS_MIR_OK)
     FAIL_CASE("the builder refused an exact destination: %s",
               e ? e : "no diagnostic");
-  if (!has_wildcard && !accepted)
-    FAIL_CASE("compile refused without a wildcard: nothing refuses it");
+  if (!refused_at_source && !accepted)
+    FAIL_CASE("compile refused with nothing to refuse");
   maelys_mir_error_free(e);
   maelys_mir_builder_destroy(b);
 }
@@ -256,8 +289,6 @@ static void run_case(const char *file) {
         else
           FAIL_CASE("unknown destination flag %s", c);
       }
-      if (!is_wildcard(a) && !canonical_name(a))
-        FAIL_CASE("destination name is not canonical: %s", a);
       for (size_t i = 0; i + 1 < destination_count; ++i)
         if (strcmp(destinations[i].name, a) == 0 && destinations[i].port == port)
           FAIL_CASE("destination named twice: %s %u", a, port);
@@ -331,10 +362,15 @@ static void run_case(const char *file) {
   fclose(f);
   line_number = 0;
 
-  int has_wildcard = 0, well_formed = 1;
+  int has_wildcard = 0, well_formed = 1, disguised = 0;
   for (size_t i = 0; i < destination_count; ++i) {
-    if (!is_wildcard(destinations[i].name))
+    if (!is_wildcard(destinations[i].name)) {
+      if (!canonical_name(destinations[i].name)) {
+        well_formed = 0;
+        disguised = 1;
+      }
       continue;
+    }
     has_wildcard = 1;
     if (!well_formed_wildcard(destinations[i].name) ||
         destinations[i].allow_private)
@@ -372,7 +408,7 @@ static void run_case(const char *file) {
       FAIL_CASE("request %s %u depends on destination order",
                 requests[i].name, requests[i].port);
   check_builder(file, line_number, mode, destinations, destination_count,
-                has_wildcard, accepted);
+                has_wildcard || disguised, accepted);
 }
 
 static int by_name(const void *a, const void *b) {

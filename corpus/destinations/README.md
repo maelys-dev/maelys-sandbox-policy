@@ -16,8 +16,11 @@ admits it under its own flags: `requireTlsSni` demands one DNS server name
 equal to the request name, and a private address demands
 `allowPrivateAddresses`. Grants are additive and order never matters. `none`
 refuses everything; `direct` allows everything, well formed or not, since no
-mediator judges it. An IPv4 literal is a name like any other: an exact
-destination may name one, a wildcard never covers one.
+mediator judges it. A strict IPv4 literal (four decimal octets, no leading
+zero) is a name like any other: an exact destination may name one, a
+wildcard never covers one. A name whose last label is numeric (digits, or
+`0x` and hex digits) and which is not a strict literal is refused at the
+source and, as a request, `malformed-name`.
 
 ## Case format
 
@@ -47,8 +50,9 @@ compile <accepted|refused>
   `sni-absent`, `sni-mismatch`, `private-address`).
 - `compile accepted`: the policy is well formed under the contract.
 - `compile refused`: the policy is refused at the source, before any
-  request: a wildcard whose suffix has fewer than two labels or whose last
-  label has no letter, a wildcard written in any other form than
+  request: an exact name whose last label is numeric without being a strict
+  IPv4 literal, a wildcard whose suffix has fewer than two labels or whose
+  last label is numeric, a wildcard written in any other form than
   `*.suffix`, or a wildcard carrying `allow-private-addresses`. A refused case has no `request` line.
 
 Until MIR v3 carries the wildcard form, `maelys_mir` refuses every

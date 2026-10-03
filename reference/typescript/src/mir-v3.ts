@@ -80,12 +80,25 @@ function normalizePath(root: number, value: string): string {
   return host ? `/${parts.join("/")}` : parts.join("/");
 }
 
+// A last label a resolver may read as a number (decimal, or 0x and hex
+// digits) makes the name a literal in disguise, read differently from one
+// host to the next: only a strict dotted IPv4 is accepted then.
+function strictIpv4(host: string): boolean {
+  return /^(?:0|[1-9][0-9]{0,2})(?:\.(?:0|[1-9][0-9]{0,2})){3}$/.test(host) &&
+    host.split(".").every((octet) => Number(octet) <= 255);
+}
+
 function validDnsHost(host: string): boolean {
   if (host.length === 0 || host.length > 253 || host.startsWith(".") || host.endsWith("."))
     return false;
-  return host.split(".").every((label) =>
+  const labels = host.split(".");
+  if (!labels.every((label) =>
     label.length > 0 && label.length <= 63 &&
-    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label));
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)))
+    return false;
+  const last = labels[labels.length - 1] ?? "";
+  if (/^(?:[0-9]+|0x[0-9a-f]+)$/.test(last)) return strictIpv4(host);
+  return true;
 }
 
 function compareRule(left: ParsedRule, right: ParsedRule): number {

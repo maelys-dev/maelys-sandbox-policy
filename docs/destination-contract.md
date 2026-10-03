@@ -20,13 +20,25 @@ starting or ending with a hyphen, letters in lower case, no trailing dot.
 It is what a MIR destination carries, and what every comparison of this
 contract is made on.
 
-- An IPv4 literal, `93.184.216.34`, has the form of a canonical name, and
-  an exact destination may name one: the builder accepts it, and so does a
-  mediator. The contract compares it as the string it is and does not
-  define what a valid address is; connecting to it is connecting to that
-  address, and the private-address rule applies to it like to any name. An
-  IPv6 literal has no canonical form. No wildcard covers a literal: the
-  last label of a suffix contains a letter.
+- A **strict IPv4 literal** — exactly four decimal octets, each 0 to 255,
+  no leading zero but `0` itself, `93.184.216.34` — is a canonical name,
+  and an exact destination may name one: connecting to it is connecting to
+  that address, and the private-address rule applies to it like to any
+  name. An IPv6 literal has no canonical form.
+- A **numeric label** is one a resolver may read as a number: decimal
+  digits only, or `0x` followed by hexadecimal digits, in either case
+  before the case is lowered. A name whose **last label is numeric** is a
+  literal in disguise: `127.1`, `2130706433`, `0x7f.1`, `0x7f000001`,
+  `0177.0x1` all reach 127.0.0.1 through the inherited forms of
+  `inet_aton`, and `010.0.0.1` reaches 10.0.0.1 on macOS and 8.0.0.1 on
+  Linux, where a leading zero means octal. Such a name is **refused at the
+  source unless it is a strict IPv4 literal**, and no resolver is consulted
+  to decide: the rule is a grammar, the same on every host. This makes the
+  interpretation of a numeric literal independent of the host; it does not
+  make DNS resolution so. It also reserves DNS suffixes such as `.0xdead`,
+  which no top-level domain uses; that restriction is deliberate.
+- No wildcard covers a literal: the last label of a suffix is never
+  numeric.
 - Internationalized names are compared as the ASCII they are written in:
   an `xn--` label is a label like any other, neither decoded nor validated.
 - A request whose name has no canonical form is refused; whether a mediator
@@ -34,8 +46,8 @@ contract is made on.
   outside this contract. The corpus names every request in canonical form.
 
 A **wildcard destination** is written `*.suffix`, where `suffix` is a
-canonical name of **at least two labels** whose **last label contains a
-letter**, as every top-level domain does. Only that form exists: no `*`
+canonical name of **at least two labels** whose **last label is not
+numeric**, as no top-level domain is. Only that form exists: no `*`
 alone, no `*` inside a label, no `*` elsewhere than as the whole first
 label. A wildcard whose suffix breaks either rule is refused at the
 source, as is a wildcard carrying `allowPrivateAddresses` (see
@@ -95,7 +107,7 @@ request itself; the others are judged destination by destination:
 | Reason | When |
 |---|---|
 | `network-none` | the mode is `none` |
-| `malformed-name` | the request name has no canonical form, in `mediated` mode |
+| `malformed-name` | the request name has no canonical form, in `mediated` mode: a numeric last label that is not a strict IPv4 literal is one such |
 | `no-destination` | no destination matches |
 | `sni-absent` | a matching destination requires a server name and none was presented |
 | `sni-mismatch` | a matching destination requires a server name and the one presented differs from the request name |
