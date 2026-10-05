@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- **`maelys-policy completion` completes.** The scripts it printed for bash
+  and zsh offered nothing but files: bash 3.2, `/bin/bash` on macOS, joined
+  the words into one, and zsh 5.9 refused the script on its first line of
+  work. They come from the framework, corrected in maelys-cli 0.5.34, pinned
+  here from 0.5.30; fish falls back to paths when nothing is offered. A
+  script already written to a file is a copy of the old text and is
+  generated again with `maelys-policy completion SHELL`. Nothing changes in
+  the catalog;
+- the conformance kit is agent-cli-spec 2.7.0, pinned from 2.6.0: it drives
+  the completion script in each shell it finds, and `dependencies/packages`
+  declares `zsh` and `fish` so that the Linux runners judge the three;
+- maelys-release adopted at v0.62.3 (from v0.62.2): the workflow pins,
+  nothing else. The formula's test now runs on a poured bottle at a release.
+
 ## 0.10.0 — 2026-10-03
 
 - the network destination contract (`docs/destination-contract.md`,

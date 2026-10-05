@@ -1,3 +1,7 @@
 [linux]
 # make check runs the agent-cli-spec conformance kit, a Python program.
 python3
+# The kit drives the completion script in each shell it finds; without
+# these it judges bash alone and skips the two others.
+zsh
+fish
