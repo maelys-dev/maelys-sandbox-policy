@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.1 — 2026-10-05
 
 - **`maelys-policy completion` completes.** The scripts it printed for bash
   and zsh offered nothing but files: bash 3.2, `/bin/bash` on macOS, joined
