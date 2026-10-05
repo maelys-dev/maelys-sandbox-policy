@@ -12,9 +12,15 @@
   the catalog;
 - the conformance kit is agent-cli-spec 2.7.0, pinned from 2.6.0: it drives
   the completion script in each shell it finds, and `dependencies/packages`
-  declares `zsh` and `fish` so that the Linux runners judge the three;
+  declares `zsh` and `fish` so that the Linux runners judge the three. It is
+  the version maelys-cli 0.5.34 targets, which `make check` requires; 2.8.0
+  exists and waits for a framework that targets it;
 - maelys-release adopted at v0.62.3 (from v0.62.2): the workflow pins,
-  nothing else. The formula's test now runs on a poured bottle at a release.
+  nothing else. The formula's test now runs on a poured bottle at a release;
+- the jobs of `ci.yml` this repository writes itself use `actions/checkout`
+  v7.0.1, the version the socle's own workflows pin; the reference verifier
+  builds with TypeScript 7.0.2 (from 5.9.3) and emits the same JavaScript,
+  byte for byte.
 
 ## 0.10.0 — 2026-10-03
 

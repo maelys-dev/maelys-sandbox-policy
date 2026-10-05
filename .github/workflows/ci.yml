@@ -37,7 +37,7 @@ jobs:
             cc: clang
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # One root for every pin, exported for this job: the build reads
       # $MAELYS_DEPENDENCIES_DIR and nothing beside the repository.
       - run: sh scripts/checkout-dependencies.sh "$RUNNER_TEMP/dependencies" >>"$GITHUB_ENV"
@@ -51,7 +51,7 @@ jobs:
     # for more than thirty: it fails here instead, and is run again.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # One root for every pin, exported for this job: the build reads
       # $MAELYS_DEPENDENCIES_DIR and nothing beside the repository.
       - run: sh scripts/checkout-dependencies.sh "$RUNNER_TEMP/dependencies" >>"$GITHUB_ENV"
@@ -72,7 +72,7 @@ jobs:
   docker-gcc:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # One root for every pin, exported for this job: the build reads
       # $MAELYS_DEPENDENCIES_DIR and nothing beside the repository.
       - run: sh scripts/checkout-dependencies.sh "$RUNNER_TEMP/dependencies" >>"$GITHUB_ENV"
@@ -91,7 +91,7 @@ jobs:
             target: macos-arm64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # One root for every pin, exported for this job: the build reads
       # $MAELYS_DEPENDENCIES_DIR and nothing beside the repository.
       - run: sh scripts/checkout-dependencies.sh "$RUNNER_TEMP/dependencies" >>"$GITHUB_ENV"
