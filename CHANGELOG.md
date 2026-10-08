@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.2 — 2026-10-08
 
 - maelys-cli pinned at v0.6.2 (from v0.5.34) and agent-cli-spec at v2.12.0
   (from v2.7.0), the pair the framework targets. `help` fits the terminal and
