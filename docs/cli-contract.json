@@ -309,7 +309,7 @@
           },
           "examples": [
             {
-              "summary": "Plan the compilation: nothing is written.",
+              "summary": "Plan the compilation: nothing is written, and the plan carries the fingerprint --expect takes.",
               "words": [
                 "compile",
                 "examples/workspace.json",
@@ -337,7 +337,15 @@
           "hidden": false,
           "id": "compile",
           "input": {
-            "constraints": [],
+            "constraints": [
+              {
+                "kind": "requires",
+                "options": [
+                  "--expect",
+                  "--apply"
+                ]
+              }
+            ],
             "operands": [
               {
                 "name": "SOURCE",
@@ -374,10 +382,27 @@
                 "required": false,
                 "requires": [],
                 "summary": "Apply the reviewed transaction; omission returns a read-only plan."
+              },
+              {
+                "argument": {
+                  "algorithms": [
+                    "sha256"
+                  ],
+                  "name": "FINGERPRINT",
+                  "type": "digest"
+                },
+                "conflictsWith": [],
+                "long": "--expect",
+                "repeatable": false,
+                "required": false,
+                "requires": [
+                  "--apply"
+                ],
+                "summary": "Apply only the plan this fingerprint names; a plan that has changed since is refused before anything is written."
               }
             ],
             "passthrough": false,
-            "synopsis": "compile SOURCE --output FILE [--replace] [--apply]"
+            "synopsis": "compile SOURCE --output FILE [--replace] [--apply] [--expect FINGERPRINT]"
           },
           "outputMode": "json-envelope",
           "outputSchema": {
@@ -392,6 +417,10 @@
               },
               "digest": {
                 "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "fingerprint": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
                 "type": "string"
               },
               "mode": {
@@ -430,6 +459,7 @@
               "output",
               "bytes",
               "digest",
+              "fingerprint",
               "precondition"
             ],
             "type": "object"
@@ -438,7 +468,7 @@
             "compile"
           ],
           "purpose": "Compile a JSON policy source into canonical MIR.",
-          "usage": "compile SOURCE --output FILE [--replace] [--apply]"
+          "usage": "compile SOURCE --output FILE [--replace] [--apply] [--expect FINGERPRINT]"
         },
         {
           "available": true,
@@ -468,7 +498,15 @@
           "hidden": false,
           "id": "restrict",
           "input": {
-            "constraints": [],
+            "constraints": [
+              {
+                "kind": "requires",
+                "options": [
+                  "--expect",
+                  "--apply"
+                ]
+              }
+            ],
             "operands": [
               {
                 "name": "BASE",
@@ -511,10 +549,27 @@
                 "required": false,
                 "requires": [],
                 "summary": "Apply the reviewed transaction; omission returns a read-only plan."
+              },
+              {
+                "argument": {
+                  "algorithms": [
+                    "sha256"
+                  ],
+                  "name": "FINGERPRINT",
+                  "type": "digest"
+                },
+                "conflictsWith": [],
+                "long": "--expect",
+                "repeatable": false,
+                "required": false,
+                "requires": [
+                  "--apply"
+                ],
+                "summary": "Apply only the plan this fingerprint names; a plan that has changed since is refused before anything is written."
               }
             ],
             "passthrough": false,
-            "synopsis": "restrict BASE RESTRICTION --output FILE [--replace] [--apply]"
+            "synopsis": "restrict BASE RESTRICTION --output FILE [--replace] [--apply] [--expect FINGERPRINT]"
           },
           "outputMode": "json-envelope",
           "outputSchema": {
@@ -536,6 +591,10 @@
               },
               "digest": {
                 "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "fingerprint": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
                 "type": "string"
               },
               "mode": {
@@ -581,6 +640,7 @@
               "output",
               "bytes",
               "digest",
+              "fingerprint",
               "precondition"
             ],
             "type": "object"
@@ -589,7 +649,7 @@
             "restrict"
           ],
           "purpose": "Compose a restriction over a base policy; the result grants nothing the base did not.",
-          "usage": "restrict BASE RESTRICTION --output FILE [--replace] [--apply]"
+          "usage": "restrict BASE RESTRICTION --output FILE [--replace] [--apply] [--expect FINGERPRINT]"
         },
         {
           "available": true,

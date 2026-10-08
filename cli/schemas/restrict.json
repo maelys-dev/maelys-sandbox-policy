@@ -1,7 +1,7 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["mode", "changed", "base", "baseDigest", "restriction", "restrictionDigest", "output", "bytes", "digest", "precondition"],
+  "required": ["mode", "changed", "base", "baseDigest", "restriction", "restrictionDigest", "output", "bytes", "digest", "fingerprint", "precondition"],
   "properties": {
     "mode": {"enum": ["plan", "apply"]},
     "changed": {"type": "boolean"},
@@ -12,6 +12,7 @@
     "output": {"type": "string"},
     "bytes": {"type": "integer", "minimum": 20},
     "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "precondition": {
       "type": "object",
       "additionalProperties": false,
