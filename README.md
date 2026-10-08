@@ -50,7 +50,9 @@ make tsan
 `maelys-policy` speaks `agent-cli/v2`: `describe --format json` returns its
 catalog, every command answers with a JSON envelope under `--format json`, and
 `compile` plans until it is given `--apply`. The generated reference is
-[docs/cli.md](docs/cli.md).
+[docs/cli.md](docs/cli.md). Each command declares its examples: `help COMMAND`
+shows them, and the binary refuses at startup an example it would not accept,
+so the lines below are the ones it knows.
 
 ```sh
 build/bin/maelys-policy compile examples/workspace.json --output policy.mir --apply

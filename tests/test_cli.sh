@@ -456,3 +456,43 @@ policy_from writer '{"formatVersion":3,"filesystem":{"default":"deny","rules":[{
 test "$("$cli" hash "$tmp_dir/restricted.mir" --field digest)" = "$("$cli" hash "$tmp_dir/readonly-git.mir" --field digest)" ||
   fail 'restricting by a deny-write gives another policy than writing it'
 contains writer restricted | grep -q '"contained":true' || fail 'a restricted policy exceeds its base'
+
+# Help: what this repository declares is what help shows. The general help
+# lists every command of the catalog by its pattern; the help of one command
+# carries its usage, its operands and options in catalog order, and each
+# declared example as one line to copy. What the contract leaves to the
+# framework (width, wording of the common sections) is not compared.
+"$cli" help >"$tmp_dir/help.txt"
+for id in $("$cli" describe --summary --format json --compact | python3 -c '
+import json, sys
+for c in json.load(sys.stdin)["data"]["commands"]:
+    if c["id"] not in ("help", "version", "describe", "completion", "complete.candidates"):
+        print(c["id"])'); do
+  grep -q "^  $id " "$tmp_dir/help.txt" || fail "general help does not list $id"
+  "$cli" help "$id" >"$tmp_dir/help-$id.txt"
+  "$cli" describe "$id" --format json --compact >"$tmp_dir/describe-$id.json"
+  python3 - "$id" "$tmp_dir/help-$id.txt" "$tmp_dir/describe-$id.json" <<'PY' || fail "help $id does not match its descriptor"
+import json, re, sys
+command_id, help_path, describe_path = sys.argv[1:]
+text = open(help_path).read()
+command = json.load(open(describe_path))["data"]["commands"][0]
+usage = command["input"]["synopsis"]
+# The usage names the operands, then the options, in the catalog's order.
+names = [o["name"] for o in command["input"]["operands"]] + \
+    [o["long"] for o in command["input"]["options"] if not o.get("hidden")]
+positions = [usage.find(n) for n in names]
+assert all(p >= 0 for p in positions) and positions == sorted(positions), (usage, names)
+assert usage.split()[0] == command["pattern"][0], usage
+for example in command.get("examples", []):
+    words = example["words"]
+    line = " ".join(words) if isinstance(words, list) else words
+    assert f"maelys-policy {line}\n" in text, example
+    assert example["summary"] in text, example
+assert "EXAMPLES" in text or not command.get("examples")
+PY
+done
+# `COMMAND --help` is the help's envelope, and runs nothing: the output file
+# is not written.
+"$cli" compile examples/workspace.json --output "$tmp_dir/never.mir" --apply --help --format json --compact >"$tmp_dir/help-flag.json"
+grep -q '"command":"help"' "$tmp_dir/help-flag.json" || fail '--help answers in the envelope of help'
+test ! -e "$tmp_dir/never.mir" || fail '--help ran the command'

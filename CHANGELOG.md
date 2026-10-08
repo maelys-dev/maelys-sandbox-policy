@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- maelys-cli pinned at v0.6.2 (from v0.5.34) and agent-cli-spec at v2.12.0
+  (from v2.7.0), the pair the framework targets. `help` fits the terminal and
+  lists each command by its pattern and purpose, the usage of a command on its
+  own page; `COMMAND --help` answers in the envelope of `help` and runs
+  nothing. `MAELYS_CLI_FORMAT` is the default format that only `--format` and
+  `--json` replace. Nothing changes in the catalog, the libraries or MIR;
+- every command declares its examples: `help COMMAND` shows them, `describe`
+  lists them, and the catalog is refused at startup when one is not an
+  invocation the command accepts. The README's lines are those examples;
+- maelys-release adopted at v0.63.1 (from v0.62.3): the workflow pins and
+  `scripts/checkout-dependencies.sh`, which 0.63.0 moves and which this
+  repository carries. Since the socle 0.62.3, the formula's test runs on the
+  poured bottle at every publication.
+
 ## 0.10.1 — 2026-10-05
 
 - **`maelys-policy completion` completes.** The scripts it printed for bash

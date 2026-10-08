@@ -1297,18 +1297,85 @@ static int command_inspect(maelys_cli_context_t *context) {
 
 /* ---- catalog ---------------------------------------------------------------- */
 
+/* One line to copy per command; the catalog refuses one the command would
+ * not accept. Paths are illustrative: nothing is read at startup. */
+static const maelys_cli_example_t compile_examples[] = {
+    {MAELYS_CLI_EXAMPLE("compile examples/workspace.json --output policy.mir",
+                        "Plan the compilation: nothing is written.")},
+    {MAELYS_CLI_EXAMPLE(
+        "compile examples/workspace.json --output policy.mir --apply",
+        "Write the canonical MIR.")},
+};
+static const maelys_cli_example_t restrict_examples[] = {
+    {MAELYS_CLI_EXAMPLE(
+        "restrict policy.mir ceiling.mir --output effective.mir --apply",
+        "Write a policy that grants nothing policy.mir or ceiling.mir did not.")},
+};
+static const maelys_cli_example_t capabilities_examples[] = {
+    {MAELYS_CLI_EXAMPLE("capabilities policy.mir",
+                        "List what a backend must offer to apply the policy.")},
+    {MAELYS_CLI_EXAMPLE(
+        "capabilities policy.mir --check --available fs-read --available fs-write",
+        "Exit 2 when the policy needs more than the two capabilities named.")},
+};
+static const maelys_cli_example_t resolve_examples[] = {
+    {MAELYS_CLI_EXAMPLE(
+        "resolve policy.mir --workspace /work --minimal-root /usr",
+        "The rules on this host, with what was omitted and what blocks.")},
+};
+static const maelys_cli_example_t evaluate_examples[] = {
+    {MAELYS_CLI_EXAMPLE("evaluate policy.mir --workspace /work --minimal-root "
+                        "/usr --path /work/src/main.c",
+                        "What the policy grants on one path, and why.")},
+};
+static const maelys_cli_example_t contains_examples[] = {
+    {MAELYS_CLI_EXAMPLE(
+        "contains parent.mir child.mir --workspace /work --minimal-root /usr",
+        "Exit 2, with a witness, when child.mir grants what parent.mir does not.")},
+};
+static const maelys_cli_example_t diff_examples[] = {
+    {MAELYS_CLI_EXAMPLE(
+        "diff before.mir after.mir --workspace /work --minimal-root /usr",
+        "What changes between the two policies on this host.")},
+    {MAELYS_CLI_EXAMPLE(
+        "diff before.mir after.mir --workspace /work --minimal-root /usr --check",
+        "Exit 2 unless the two policies are equivalent here.")},
+};
+static const maelys_cli_example_t overlaps_examples[] = {
+    {MAELYS_CLI_EXAMPLE(
+        "overlaps first.mir second.mir --workspace /work --minimal-root /usr",
+        "Whether both policies grant a common access, and where.")},
+};
+static const maelys_cli_example_t validate_examples[] = {
+    {MAELYS_CLI_EXAMPLE("validate policy.mir",
+                        "Exit 2 when the file is not canonical MIR.")},
+};
+static const maelys_cli_example_t hash_examples[] = {
+    {MAELYS_CLI_EXAMPLE("hash policy.mir", "The policy identity, a SHA-256.")},
+};
+static const maelys_cli_example_t inspect_examples[] = {
+    {MAELYS_CLI_EXAMPLE("inspect policy.mir --format json",
+                        "The decoded policy as JSON.")},
+};
+static const maelys_cli_example_t artifact_hash_examples[] = {
+    {MAELYS_CLI_EXAMPLE("artifact-hash examples/workspace.json",
+                        "The identity a source would compile to, without writing it.")},
+};
+
 static const maelys_cli_command_t commands[] = {
     {MAELYS_CLI_TRANSACTION("compile", "compile",
                             "Compile a JSON policy source into canonical MIR.",
                             command_compile),
      MAELYS_CLI_OPERANDS(compile_operands), MAELYS_CLI_OPTIONS(publish_options),
-     MAELYS_CLI_SCHEMA(policy_compile_schema)},
+     MAELYS_CLI_SCHEMA(policy_compile_schema),
+     MAELYS_CLI_EXAMPLES(compile_examples)},
     {MAELYS_CLI_TRANSACTION("restrict", "restrict",
                             "Compose a restriction over a base policy; the "
                             "result grants nothing the base did not.",
                             command_restrict),
      MAELYS_CLI_OPERANDS(restrict_operands), MAELYS_CLI_OPTIONS(publish_options),
-     MAELYS_CLI_SCHEMA(policy_restrict_schema)},
+     MAELYS_CLI_SCHEMA(policy_restrict_schema),
+     MAELYS_CLI_EXAMPLES(restrict_examples)},
     {MAELYS_CLI_READ("capabilities", "capabilities",
                      "List the backend capabilities a policy requires, or "
                      "check them against a declared set; exit 2 when some "
@@ -1316,59 +1383,69 @@ static const maelys_cli_command_t commands[] = {
                      command_capabilities),
      MAELYS_CLI_OPERANDS(policy_operands),
      MAELYS_CLI_OPTIONS(capabilities_options),
-     MAELYS_CLI_SCHEMA(policy_capabilities_schema)},
+     MAELYS_CLI_SCHEMA(policy_capabilities_schema),
+     MAELYS_CLI_EXAMPLES(capabilities_examples)},
     {MAELYS_CLI_READ("resolve", "resolve",
                      "Resolve a policy on this host and report its rules, "
                      "what was omitted and what prevents the execution; "
                      "exit 2 when something does.",
                      command_resolve),
      MAELYS_CLI_OPERANDS(policy_operands), MAELYS_CLI_OPTIONS(resolve_options),
-     MAELYS_CLI_SCHEMA(policy_resolve_schema)},
+     MAELYS_CLI_SCHEMA(policy_resolve_schema),
+     MAELYS_CLI_EXAMPLES(resolve_examples)},
     {MAELYS_CLI_READ("evaluate", "evaluate",
                      "State what the policy, resolved on this host, grants "
                      "on one path, and the rule that decides.",
                      command_evaluate),
      MAELYS_CLI_OPERANDS(policy_operands), MAELYS_CLI_OPTIONS(evaluate_options),
-     MAELYS_CLI_SCHEMA(policy_evaluate_schema)},
+     MAELYS_CLI_SCHEMA(policy_evaluate_schema),
+     MAELYS_CLI_EXAMPLES(evaluate_examples)},
     {MAELYS_CLI_READ("contains", "contains",
                      "Check that a candidate policy, resolved on this host, "
                      "grants nothing its boundary does not; exit 2 with a "
                      "witness when it does.",
                      command_contains),
      MAELYS_CLI_OPERANDS(contains_operands), MAELYS_CLI_OPTIONS(contains_options),
-     MAELYS_CLI_SCHEMA(policy_contains_schema)},
+     MAELYS_CLI_SCHEMA(policy_contains_schema),
+     MAELYS_CLI_EXAMPLES(contains_examples)},
     {MAELYS_CLI_READ("diff", "diff",
                      "Report what changes between two policies resolved on "
                      "this host; with --check, exit 2 unless they grant the "
                      "same permissions.",
                      command_diff),
      MAELYS_CLI_OPERANDS(diff_operands), MAELYS_CLI_OPTIONS(diff_options),
-     MAELYS_CLI_SCHEMA(policy_diff_schema)},
+     MAELYS_CLI_SCHEMA(policy_diff_schema),
+     MAELYS_CLI_EXAMPLES(diff_examples)},
     {MAELYS_CLI_READ("overlaps", "overlaps",
                      "Tell whether two policies resolved on this host grant "
                      "a common access, with a witness.",
                      command_overlaps),
      MAELYS_CLI_OPERANDS(overlaps_operands), MAELYS_CLI_OPTIONS(contains_options),
-     MAELYS_CLI_SCHEMA(policy_overlaps_schema)},
+     MAELYS_CLI_SCHEMA(policy_overlaps_schema),
+     MAELYS_CLI_EXAMPLES(overlaps_examples)},
     {MAELYS_CLI_READ("validate", "validate",
                      "Check that a file is canonical MIR; exit 2 when it is not.",
                      command_validate),
      MAELYS_CLI_OPERANDS(policy_operands),
-     MAELYS_CLI_SCHEMA(policy_validate_schema)},
+     MAELYS_CLI_SCHEMA(policy_validate_schema),
+     MAELYS_CLI_EXAMPLES(validate_examples)},
     {MAELYS_CLI_READ("hash", "hash",
                      "Print the decision digest of canonical MIR.", command_hash),
-     MAELYS_CLI_OPERANDS(policy_operands), MAELYS_CLI_SCHEMA(policy_hash_schema)},
+     MAELYS_CLI_OPERANDS(policy_operands), MAELYS_CLI_SCHEMA(policy_hash_schema),
+     MAELYS_CLI_EXAMPLES(hash_examples)},
     {MAELYS_CLI_READ("inspect", "inspect",
                      "Render the non-normative JSON projection of canonical MIR.",
                      command_inspect),
      MAELYS_CLI_OPERANDS(policy_operands),
-     MAELYS_CLI_SCHEMA(policy_inspect_schema)},
+     MAELYS_CLI_SCHEMA(policy_inspect_schema),
+     MAELYS_CLI_EXAMPLES(inspect_examples)},
     {MAELYS_CLI_READ("artifact-hash", "artifact-hash",
                      "Print the SHA-256 of any file; it carries no policy "
                      "identity.",
                      command_artifact_hash),
      MAELYS_CLI_OPERANDS(artifact_operands),
-     MAELYS_CLI_SCHEMA(policy_hash_schema)},
+     MAELYS_CLI_SCHEMA(policy_hash_schema),
+     MAELYS_CLI_EXAMPLES(artifact_hash_examples)},
 };
 
 int main(int argc, char **argv) {
