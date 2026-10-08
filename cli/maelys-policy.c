@@ -76,6 +76,7 @@ static int decode_policy(maelys_cli_context_t *context, const char *path,
 typedef struct published_policy {
   size_t size;
   char digest[MAELYS_MIR_DIGEST_HEX_SIZE];
+  char fingerprint[MAELYS_CLI_FINGERPRINT_SIZE];
   int target_absent;
 } published_policy_t;
 
@@ -84,7 +85,8 @@ typedef struct published_policy {
  * reads --output, --replace and --apply. On failure it has replied and
  * returns nonzero. */
 static int publish_policy(maelys_cli_context_t *context, const maelys_mir_t *mir,
-                          const char *what, published_policy_t *out) {
+                          const char *action, const char *what,
+                          published_policy_t *out) {
   const char *output = maelys_cli_option(context, "output");
   int replace = maelys_cli_flag(context, "replace");
   uint8_t *bytes = NULL;
@@ -107,6 +109,34 @@ static int publish_policy(maelys_cli_context_t *context, const maelys_mir_t *mir
         "Output %s already exists.", output);
     return 1;
   }
+  /* The fingerprint of the plan: the action (which command, which inputs by
+   * name, which output, replacing or not), what it would write (the digest
+   * is the identity of the policy, so the same bytes), and what is at the
+   * output now. Under --apply --expect, another plan, or the same plan over
+   * an output that changed since it was read, is refused before the write. */
+  maelys_cli_fingerprint_t plan;
+  maelys_cli_fingerprint_init(&plan);
+  maelys_cli_fingerprint_add_string(&plan, "action", action);
+  for (size_t i = 0; i < maelys_cli_operand_count(context); ++i)
+    maelys_cli_fingerprint_add_string(&plan, "input",
+                                      maelys_cli_operand(context, i));
+  maelys_cli_fingerprint_add_string(&plan, "output", output);
+  maelys_cli_fingerprint_add_string(&plan, "replace", replace ? "true" : "false");
+  maelys_cli_fingerprint_add_string(&plan, "digest", out->digest);
+  if (maelys_cli_fingerprint_add_file(&plan, "target", output,
+                                      MAELYS_MIR_MAX_BYTES) != 0) {
+    int saved = errno;
+    maelys_mir_bytes_free(bytes);
+    (void)maelys_cli_fail_errno(context, MAELYS_CLI_CODE_IO_FAILED, saved,
+                                output);
+    return 1;
+  }
+  maelys_cli_fingerprint_finish(&plan, out->fingerprint);
+  int refused = maelys_cli_expect(context, out->fingerprint);
+  if (refused) {
+    maelys_mir_bytes_free(bytes);
+    return refused;
+  }
   if (maelys_cli_flag(context, "apply") &&
       maelys_cli_write_file_atomic(output, bytes, out->size, 0644,
                                    replace ? MAELYS_CLI_WRITE_REPLACE
@@ -128,6 +158,7 @@ static void write_publication(maelys_cli_json_writer_t *data,
                                    maelys_cli_option(context, "output"));
   (void)maelys_cli_json_key_unsigned(data, "bytes", (uint64_t)published->size);
   (void)maelys_cli_json_key_string(data, "digest", published->digest);
+  (void)maelys_cli_json_key_string(data, "fingerprint", published->fingerprint);
   (void)maelys_cli_json_key(data, "precondition");
   (void)maelys_cli_json_begin_object(data);
   (void)maelys_cli_json_key_boolean(data, "targetAbsent",
@@ -160,6 +191,7 @@ static const maelys_cli_option_t publish_options[] = {
      .required = 1},
     {MAELYS_CLI_FLAG("replace", "Allow replacing an existing output atomically.")},
     MAELYS_CLI_APPLY_OPTION,
+    MAELYS_CLI_EXPECT_OPTION,
 };
 
 static int command_compile(maelys_cli_context_t *context) {
@@ -177,7 +209,7 @@ static int command_compile(maelys_cli_context_t *context) {
   if (result != MAELYS_MIR_OK)
     return fail_mir(context, result, error, source);
   published_policy_t published;
-  int failed = publish_policy(context, mir, source, &published);
+  int failed = publish_policy(context, mir, "compile", source, &published);
   maelys_mir_destroy(mir);
   if (failed)
     return MAELYS_CLI_EXIT_FAILURE;
@@ -229,7 +261,8 @@ static int command_restrict(maelys_cli_context_t *context) {
   if (result != MAELYS_MIR_OK)
     return fail_mir(context, result, error, restriction_path);
   published_policy_t published;
-  int failed = publish_policy(context, effective, restriction_path, &published);
+  int failed =
+      publish_policy(context, effective, "restrict", restriction_path, &published);
   maelys_mir_destroy(effective);
   if (failed)
     return MAELYS_CLI_EXIT_FAILURE;
@@ -1301,7 +1334,8 @@ static int command_inspect(maelys_cli_context_t *context) {
  * not accept. Paths are illustrative: nothing is read at startup. */
 static const maelys_cli_example_t compile_examples[] = {
     {MAELYS_CLI_EXAMPLE("compile examples/workspace.json --output policy.mir",
-                        "Plan the compilation: nothing is written.")},
+                        "Plan the compilation: nothing is written, and the plan "
+                        "carries the fingerprint --expect takes.")},
     {MAELYS_CLI_EXAMPLE(
         "compile examples/workspace.json --output policy.mir --apply",
         "Write the canonical MIR.")},

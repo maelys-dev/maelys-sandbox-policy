@@ -13,8 +13,8 @@ Common contract: `agent-cli/v2`. For the machine-readable detail run
 | describe | `describe [COMMAND_ID] [--summary] [--prefix PREFIX]` | read | json-envelope | Return the machine-readable catalog, summary or one descriptor. |
 | completion | `completion SHELL` | read | json-envelope | Print the shell completion script generated from the catalog. |
 | complete.candidates | `__complete [WORDS...]` | read | json-records | Return completion candidates for a partial command line. |
-| compile | `compile SOURCE --output FILE [--replace] [--apply]` | preview then apply with --apply | json-envelope | Compile a JSON policy source into canonical MIR. |
-| restrict | `restrict BASE RESTRICTION --output FILE [--replace] [--apply]` | preview then apply with --apply | json-envelope | Compose a restriction over a base policy; the result grants nothing the base did not. |
+| compile | `compile SOURCE --output FILE [--replace] [--apply] [--expect FINGERPRINT]` | preview then apply with --apply | json-envelope | Compile a JSON policy source into canonical MIR. |
+| restrict | `restrict BASE RESTRICTION --output FILE [--replace] [--apply] [--expect FINGERPRINT]` | preview then apply with --apply | json-envelope | Compose a restriction over a base policy; the result grants nothing the base did not. |
 | capabilities | `capabilities POLICY [--check] [--available CAPABILITY...]` | read | json-envelope | List the backend capabilities a policy requires, or check them against a declared set; exit 2 when some are missing. |
 | resolve | `resolve POLICY [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID] [--check] [--available CAPABILITY...]` | read | json-envelope | Resolve a policy on this host and report its rules, what was omitted and what prevents the execution; exit 2 when something does. |
 | evaluate | `evaluate POLICY --path PATH [--workspace DIR] [--temp DIR] [--minimal-root DIR...] [--mediator ID]` | read | json-envelope | State what the policy, resolved on this host, grants on one path, and the rule that decides. |

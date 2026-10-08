@@ -487,7 +487,9 @@ for example in command.get("examples", []):
     words = example["words"]
     line = " ".join(words) if isinstance(words, list) else words
     assert f"maelys-policy {line}\n" in text, example
-    assert example["summary"] in text, example
+    # The sentence below the line wraps at the help's width.
+    flat = re.sub(r"\s+", " ", text)
+    assert example["summary"] in flat, example
 assert "EXAMPLES" in text or not command.get("examples")
 PY
 done
@@ -496,3 +498,42 @@ done
 "$cli" compile examples/workspace.json --output "$tmp_dir/never.mir" --apply --help --format json --compact >"$tmp_dir/help-flag.json"
 grep -q '"command":"help"' "$tmp_dir/help-flag.json" || fail '--help answers in the envelope of help'
 test ! -e "$tmp_dir/never.mir" || fail '--help ran the command'
+
+# --expect binds --apply to the plan that was reviewed. The fingerprint
+# covers the action, what would be written and what is at the output now.
+"$cli" compile examples/workspace.json --output "$tmp_dir/bound.mir" --format json --compact >"$tmp_dir/bound-plan.json"
+bound=$("$cli" compile examples/workspace.json --output "$tmp_dir/bound.mir" --field fingerprint)
+case "$bound" in sha256:????????????????????????????????????????????????????????????????) ;; *) fail "fingerprint shape: $bound" ;; esac
+grep -q "\"fingerprint\":\"$bound\"" "$tmp_dir/bound-plan.json" || fail 'the plan carries its fingerprint'
+# Another plan: the same fingerprint is refused, nothing is written.
+status=0
+"$cli" compile examples/workspace.json --output "$tmp_dir/other.mir" --apply --expect "$bound" \
+  --format json --compact 2>"$tmp_dir/expect-other.json" >/dev/null || status=$?
+test "$status" = 1 || fail "expect of another plan exited $status, not 1"
+grep -q '"code":"PRECONDITION_FAILED"' "$tmp_dir/expect-other.json" || fail 'expect of another plan'
+test ! -e "$tmp_dir/other.mir" || fail 'expect of another plan wrote the output'
+# The reviewed plan: applied, and the fingerprint is the plan's.
+"$cli" compile examples/workspace.json --output "$tmp_dir/bound.mir" --apply --expect "$bound" \
+  --format json --compact >"$tmp_dir/bound-apply.json" || fail 'expect of the reviewed plan'
+grep -q "\"fingerprint\":\"$bound\"" "$tmp_dir/bound-apply.json" || fail 'apply reports the plan fingerprint'
+test -f "$tmp_dir/bound.mir" || fail 'expect of the reviewed plan wrote nothing'
+# The same plan over an output that changed since: another fingerprint, refused.
+replan=$("$cli" compile examples/workspace.json --output "$tmp_dir/bound.mir" --replace --field fingerprint)
+test "$replan" != "$bound" || fail 'the output state is not in the fingerprint'
+printf 'changed' >>"$tmp_dir/bound.mir"
+status=0
+"$cli" compile examples/workspace.json --output "$tmp_dir/bound.mir" --replace --apply --expect "$replan" \
+  --format json --compact 2>"$tmp_dir/expect-stale.json" >/dev/null || status=$?
+test "$status" = 1 || fail "expect over a changed output exited $status, not 1"
+grep -q '"code":"PRECONDITION_FAILED"' "$tmp_dir/expect-stale.json" || fail 'expect over a changed output'
+test "$(tail -c 7 "$tmp_dir/bound.mir")" = "changed" || fail 'expect over a changed output wrote it'
+# --expect requires --apply; the catalog says so.
+status=0
+"$cli" compile examples/workspace.json --output "$tmp_dir/bound.mir" --expect "$bound" \
+  --format json --compact 2>"$tmp_dir/expect-plan.json" >/dev/null || status=$?
+test "$status" = 1 || fail "expect without apply exited $status, not 1"
+grep -q '"code":"VALIDATION_FAILED"' "$tmp_dir/expect-plan.json" || fail 'expect without apply'
+"$cli" describe restrict --format json --compact | grep -q '"long":"--expect"' || fail 'restrict declares --expect'
+restrict_fp=$("$cli" restrict "$tmp_dir/policy.mir" "$tmp_dir/ceiling.mir" --output "$tmp_dir/bound-restrict.mir" --field fingerprint)
+"$cli" restrict "$tmp_dir/policy.mir" "$tmp_dir/ceiling.mir" --output "$tmp_dir/bound-restrict.mir" --apply --expect "$restrict_fp" >/dev/null ||
+  fail 'restrict --expect of the reviewed plan'

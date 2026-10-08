@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **`compile` and `restrict` bind their application to the plan that was
+  reviewed.** Each plan returns `fingerprint`, a `sha256:` digest over the
+  action (the command, its inputs by name, the output, `--replace`), the
+  identity of the policy it would write, and what is at the output now.
+  `--apply --expect FINGERPRINT` writes only when the plan is still that
+  one; another plan, or the same plan over an output that changed since,
+  is refused with `PRECONDITION_FAILED` and nothing is written. `--expect`
+  requires `--apply`. Nothing changes for a caller that passes neither.
+
 ## 0.10.2 — 2026-10-08
 
 - maelys-cli pinned at v0.6.2 (from v0.5.34) and agent-cli-spec at v2.12.0

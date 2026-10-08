@@ -55,7 +55,8 @@ shows them, and the binary refuses at startup an example it would not accept,
 so the lines below are the ones it knows.
 
 ```sh
-build/bin/maelys-policy compile examples/workspace.json --output policy.mir --apply
+build/bin/maelys-policy compile examples/workspace.json --output policy.mir   # the plan, with its fingerprint
+build/bin/maelys-policy compile examples/workspace.json --output policy.mir --apply --expect "$fingerprint"   # that plan, or nothing
 build/bin/maelys-policy validate policy.mir        # exit 2 when not canonical MIR
 build/bin/maelys-policy hash policy.mir
 build/bin/maelys-policy inspect policy.mir
