@@ -21,7 +21,7 @@
               {
                 "name": "COMMAND_ID",
                 "required": false,
-                "summary": "Stable command identifier whose help is shown.",
+                "summary": "Stable command identifier whose help is shown, the family of commands under an identifier, or `conventions`.",
                 "variadic": false
               }
             ],
@@ -307,6 +307,27 @@
             "apply": "apply",
             "plan": "preview"
           },
+          "examples": [
+            {
+              "summary": "Plan the compilation: nothing is written.",
+              "words": [
+                "compile",
+                "examples/workspace.json",
+                "--output",
+                "policy.mir"
+              ]
+            },
+            {
+              "summary": "Write the canonical MIR.",
+              "words": [
+                "compile",
+                "examples/workspace.json",
+                "--output",
+                "policy.mir",
+                "--apply"
+              ]
+            }
+          ],
           "exitCodes": {
             "0": "command completed",
             "1": "execution failed",
@@ -425,6 +446,19 @@
             "apply": "apply",
             "plan": "preview"
           },
+          "examples": [
+            {
+              "summary": "Write a policy that grants nothing policy.mir or ceiling.mir did not.",
+              "words": [
+                "restrict",
+                "policy.mir",
+                "ceiling.mir",
+                "--output",
+                "effective.mir",
+                "--apply"
+              ]
+            }
+          ],
           "exitCodes": {
             "0": "command completed",
             "1": "execution failed",
@@ -560,6 +594,27 @@
         {
           "available": true,
           "effect": "read",
+          "examples": [
+            {
+              "summary": "List what a backend must offer to apply the policy.",
+              "words": [
+                "capabilities",
+                "policy.mir"
+              ]
+            },
+            {
+              "summary": "Exit 2 when the policy needs more than the two capabilities named.",
+              "words": [
+                "capabilities",
+                "policy.mir",
+                "--check",
+                "--available",
+                "fs-read",
+                "--available",
+                "fs-write"
+              ]
+            }
+          ],
           "exitCodes": {
             "0": "command completed",
             "1": "execution failed",
@@ -743,6 +798,19 @@
         {
           "available": true,
           "effect": "read",
+          "examples": [
+            {
+              "summary": "The rules on this host, with what was omitted and what blocks.",
+              "words": [
+                "resolve",
+                "policy.mir",
+                "--workspace",
+                "/work",
+                "--minimal-root",
+                "/usr"
+              ]
+            }
+          ],
           "exitCodes": {
             "0": "command completed",
             "1": "execution failed",
@@ -1113,6 +1181,21 @@
         {
           "available": true,
           "effect": "read",
+          "examples": [
+            {
+              "summary": "What the policy grants on one path, and why.",
+              "words": [
+                "evaluate",
+                "policy.mir",
+                "--workspace",
+                "/work",
+                "--minimal-root",
+                "/usr",
+                "--path",
+                "/work/src/main.c"
+              ]
+            }
+          ],
           "exitCodes": {
             "0": "command completed",
             "1": "execution failed",
@@ -1318,6 +1401,20 @@
         {
           "available": true,
           "effect": "read",
+          "examples": [
+            {
+              "summary": "Exit 2, with a witness, when child.mir grants what parent.mir does not.",
+              "words": [
+                "contains",
+                "parent.mir",
+                "child.mir",
+                "--workspace",
+                "/work",
+                "--minimal-root",
+                "/usr"
+              ]
+            }
+          ],
           "exitCodes": {
             "0": "command completed",
             "1": "execution failed",
@@ -1690,6 +1787,33 @@
         {
           "available": true,
           "effect": "read",
+          "examples": [
+            {
+              "summary": "What changes between the two policies on this host.",
+              "words": [
+                "diff",
+                "before.mir",
+                "after.mir",
+                "--workspace",
+                "/work",
+                "--minimal-root",
+                "/usr"
+              ]
+            },
+            {
+              "summary": "Exit 2 unless the two policies are equivalent here.",
+              "words": [
+                "diff",
+                "before.mir",
+                "after.mir",
+                "--workspace",
+                "/work",
+                "--minimal-root",
+                "/usr",
+                "--check"
+              ]
+            }
+          ],
           "exitCodes": {
             "0": "command completed",
             "1": "execution failed",
@@ -2098,6 +2222,20 @@
         {
           "available": true,
           "effect": "read",
+          "examples": [
+            {
+              "summary": "Whether both policies grant a common access, and where.",
+              "words": [
+                "overlaps",
+                "first.mir",
+                "second.mir",
+                "--workspace",
+                "/work",
+                "--minimal-root",
+                "/usr"
+              ]
+            }
+          ],
           "exitCodes": {
             "0": "command completed",
             "1": "execution failed",
@@ -2346,6 +2484,15 @@
         {
           "available": true,
           "effect": "read",
+          "examples": [
+            {
+              "summary": "Exit 2 when the file is not canonical MIR.",
+              "words": [
+                "validate",
+                "policy.mir"
+              ]
+            }
+          ],
           "exitCodes": {
             "0": "command completed",
             "1": "execution failed",
@@ -2423,6 +2570,15 @@
         {
           "available": true,
           "effect": "read",
+          "examples": [
+            {
+              "summary": "The policy identity, a SHA-256.",
+              "words": [
+                "hash",
+                "policy.mir"
+              ]
+            }
+          ],
           "exitCodes": {
             "0": "command completed",
             "1": "execution failed",
@@ -2472,6 +2628,17 @@
         {
           "available": true,
           "effect": "read",
+          "examples": [
+            {
+              "summary": "The decoded policy as JSON.",
+              "words": [
+                "inspect",
+                "policy.mir",
+                "--format",
+                "json"
+              ]
+            }
+          ],
           "exitCodes": {
             "0": "command completed",
             "1": "execution failed",
@@ -2683,6 +2850,15 @@
         {
           "available": true,
           "effect": "read",
+          "examples": [
+            {
+              "summary": "The identity a source would compile to, without writing it.",
+              "words": [
+                "artifact-hash",
+                "examples/workspace.json"
+              ]
+            }
+          ],
           "exitCodes": {
             "0": "command completed",
             "1": "execution failed",
