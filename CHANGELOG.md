@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 — 2026-10-08
 
 - **`compile` and `restrict` bind their application to the plan that was
   reviewed.** Each plan returns `fingerprint`, a `sha256:` digest over the
