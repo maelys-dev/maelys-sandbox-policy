@@ -1,4 +1,4 @@
-# Milestones implemented through 0.10.1
+# Milestones implemented through 0.10.2
 
 ## MIR track
 
