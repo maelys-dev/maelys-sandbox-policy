@@ -20,7 +20,7 @@ typedef struct maelys_sandbox_policy_plan maelys_sandbox_policy_plan_t;
  * permissions differ from the most-specific-wins order of contract 1 is
  * refused with MAELYS_MIR_ERR_CONFLICT instead of being reinterpreted. */
 #define MAELYS_SANDBOX_POLICY_PERMISSION_CONTRACT 2u
-#define MAELYS_SANDBOX_POLICY_VERSION "0.10.2"
+#define MAELYS_SANDBOX_POLICY_VERSION "0.11.0"
 
 typedef uint64_t maelys_sandbox_policy_capabilities_t;
 enum {
